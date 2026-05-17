@@ -33,3 +33,9 @@ env/
 
 # Logs
 *.log
+
+# C++ Build
+build*/
+.vscode/
+*.user
+*.pro.user*
