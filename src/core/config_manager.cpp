@@ -95,6 +95,24 @@ bool ConfigManager::load(const QString& path)
         config_.tabs.append(tc);
     }
 
+    QJsonArray savedArr = root["saved_ports"].toArray();
+    for (const auto& val : savedArr) {
+        QJsonObject sp = val.toObject();
+        SavedPort saved;
+        saved.name = sp["name"].toString();
+        saved.port = sp["port"].toString();
+        saved.baudrate = sp["baudrate"].toInt(115200);
+        saved.databits = static_cast<QSerialPort::DataBits>(sp["databits"].toInt(8));
+        QString p = sp["parity"].toString("N");
+        if (p == "E") saved.parity = QSerialPort::EvenParity;
+        else if (p == "O") saved.parity = QSerialPort::OddParity;
+        else if (p == "M") saved.parity = QSerialPort::MarkParity;
+        else if (p == "S") saved.parity = QSerialPort::SpaceParity;
+        else saved.parity = QSerialPort::NoParity;
+        saved.stopbits = static_cast<QSerialPort::StopBits>(sp["stopbits"].toInt(1));
+        config_.savedPorts.append(saved);
+    }
+
     spdlog::info("Config loaded from {}", configPath_.toStdString());
     return true;
 }
@@ -156,6 +174,25 @@ bool ConfigManager::save(const QString& path)
     root["filters"] = filters;
     root["send"] = send;
     root["gui"] = gui;
+
+    QJsonArray savedArr;
+    for (const auto& s : config_.savedPorts) {
+        QJsonObject sp;
+        sp["name"] = s.name;
+        sp["port"] = s.port;
+        sp["baudrate"] = s.baudrate;
+        sp["databits"] = static_cast<int>(s.databits);
+        switch (s.parity) {
+            case QSerialPort::EvenParity: sp["parity"] = "E"; break;
+            case QSerialPort::OddParity: sp["parity"] = "O"; break;
+            case QSerialPort::MarkParity: sp["parity"] = "M"; break;
+            case QSerialPort::SpaceParity: sp["parity"] = "S"; break;
+            default: sp["parity"] = "N"; break;
+        }
+        sp["stopbits"] = static_cast<int>(s.stopbits);
+        savedArr.append(sp);
+    }
+    root["saved_ports"] = savedArr;
 
     QDir().mkpath(QFileInfo(configPath_).absolutePath());
 

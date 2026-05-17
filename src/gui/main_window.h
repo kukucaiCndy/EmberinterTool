@@ -21,6 +21,7 @@
 #include "ipc_server.h"
 #include "serial_engine.h"
 #include "log_buffer.h"
+#include "config_manager.h"
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -37,18 +38,24 @@ private:
     };
 
 private slots:
-    void onConnectOrDisconnect();
     void onSettings();
+    void onAbout();
     void onClear();
     void onExport();
     void onPauseToggled(bool paused);
     void onFilterChanged(const QString& text);
     void onTabChanged(int index);
-    void onAddTab();
-    void onRefreshPorts();
-    void onPortSelected(const QString& port);
+    void onTabClosed(int index);
     void onSerialDataReceived(const QByteArray& data, const QString& port);
     void onSerialStatusChanged(const QString& port, bool connected, const SerialConfig& config);
+
+    void onAddSavedPort();
+    void onEditSavedPort();
+    void onDeleteSavedPort();
+    void onDisconnectAction();
+    void onConnectAction();
+    void onSavedPortClicked(QListWidgetItem* item);
+    void onSavedPortContextMenu(const QPoint& pos);
 
 private:
     void setupUi();
@@ -58,23 +65,17 @@ private:
     void loadConfig();
     void saveConfig();
     void loadTheme();
-    void scanSerialPorts();
-    void updateConnectButtonState(bool connected);
     void closeEvent(QCloseEvent* event) override;
+
+    void connectSavedPort(int savedIdx);
+    void disconnectCurrentPort();
 
     QSplitter* splitter_;
 
     QWidget* sidebar_;
-    QListWidget* portList_;
-    QComboBox* portCombo_;
-    QComboBox* baudCombo_;
-    QComboBox* dataBitsCombo_;
-    QComboBox* parityCombo_;
-    QComboBox* stopBitsCombo_;
-    QPushButton* connectBtn_;
+    QListWidget* savedPortList_;
 
     SerialTabWidget* tabWidget_;
-    QPushButton* addTabBtn_;
     LogView* logView_;
     QLineEdit* filterEdit_;
     QComboBox* displayModeCombo_;
@@ -89,6 +90,8 @@ private:
     QElapsedTimer connectionTimer_;
     bool connectionTimerRunning_;
     QMap<QString, PendingConnectRequest> pendingConnects_;
+
+    QVector<SavedPort> savedPorts_;
 
     qint64 rxBytes_;
     qint64 txBytes_;

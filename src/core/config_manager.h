@@ -4,6 +4,31 @@
 #include <QString>
 #include <QStringList>
 #include <QVector>
+#include <QSerialPort>
+#include "serial_engine.h"
+
+struct SavedPort {
+    QString name;
+    QString port;
+    int baudrate = 115200;
+    QSerialPort::DataBits databits = QSerialPort::Data8;
+    QSerialPort::Parity parity = QSerialPort::NoParity;
+    QSerialPort::StopBits stopbits = QSerialPort::OneStop;
+
+    QString summary() const {
+        return port.isEmpty() ? name : QString("%1 - %2").arg(port, name);
+    }
+
+    SerialConfig toSerialConfig() const {
+        SerialConfig cfg;
+        cfg.port = port;
+        cfg.baudrate = baudrate;
+        cfg.databits = databits;
+        cfg.parity = parity;
+        cfg.stopbits = stopbits;
+        return cfg;
+    }
+};
 
 struct TabConfig {
     QString port;
@@ -38,6 +63,7 @@ struct AppConfig {
     int windowWidth = 1000;
     int windowHeight = 700;
     QVector<TabConfig> tabs;
+    QVector<SavedPort> savedPorts;
     QString ipcName = "serial_monitor_ipc";
 };
 

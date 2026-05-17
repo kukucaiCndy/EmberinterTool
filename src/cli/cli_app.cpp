@@ -57,11 +57,11 @@ int CLIApp::run(int argc, char* argv[])
 
     QCoreApplication app(argc, argv);
     app_ = &app;
-    app.setApplicationName("emberInter-cli");
-    app.setApplicationVersion("2.0.0");
+    app.setApplicationName("EmberInterDebugTool-cli");
+    app.setApplicationVersion("1.0.0");
 
     QCommandLineParser parser;
-    parser.setApplicationDescription("emberInter 尘智串口调试工具 - CLI Client");
+    parser.setApplicationDescription("EmberInterDebugTool - 尘智串口调试工具 CLI");
     parser.addHelpOption();
     parser.addVersionOption();
 
@@ -84,12 +84,26 @@ int CLIApp::run(int argc, char* argv[])
 
     parser.process(app);
 
+    if (parser.isSet("help") || parser.isSet("version")) {
+        return 0;
+    }
+
     jsonMode_ = parser.isSet("json");
     hexMode_ = parser.isSet("hex");
     showTimestamp_ = !parser.isSet("no-timestamp");
     filter_ = parser.value("f");
     outputFile_ = parser.value("o");
     ipcName_ = parser.value("ipc");
+
+    bool needsIpc = parser.isSet("list") || parser.isSet("get-status") ||
+                    parser.isSet("get-logs") || parser.isSet("send") ||
+                    parser.isSet("connect") || parser.isSet("cli") ||
+                    !parser.value("p").isEmpty();
+
+    if (!needsIpc) {
+        printUsage();
+        return 1;
+    }
 
     if (!ipc_->connectToServer(ipcName_)) {
         QTextStream err(stderr);
@@ -210,7 +224,7 @@ int CLIApp::runInteractive(const QString& port)
 
     QTextStream out(stdout);
     out << COLOR_CYAN << QString(60, '=') << COLOR_RESET << Qt::endl;
-    out << COLOR_CYAN << "  emberInter 尘智串口调试工具 CLI" << COLOR_RESET << Qt::endl;
+    out << COLOR_CYAN << "  EmberInterDebugTool v1.0.0 - 尘智 | 微尘藏星火,终端蕴尘智" << COLOR_RESET << Qt::endl;
     out << COLOR_GRAY << "  Port: " << port << COLOR_RESET << Qt::endl;
     out << COLOR_CYAN << QString(60, '=') << COLOR_RESET << Qt::endl;
     out << Qt::endl;
@@ -307,6 +321,11 @@ void CLIApp::handleCommand(const QString& cmd)
         params["port"] = parts.value(0);
         params["baudrate"] = parts.value(1, "115200").toInt();
         ipc_->sendCommand("connect", params);
+        return;
+    }
+    if (cmd == "disconnect" || cmd == "disc") {
+        ipc_->sendCommand("disconnect");
+        out << COLOR_GREEN << "[系统] 正在断开..." << COLOR_RESET << Qt::endl;
         return;
     }
 
@@ -441,36 +460,70 @@ void CLIApp::printHelp() const
 {
     QTextStream out(stdout);
     out << Qt::endl;
-    out << "命令:" << Qt::endl;
-    out << "  q/quit/exit           - 退出CLI (GUI继续运行)" << Qt::endl;
-    out << "  c/clear               - 清空日志缓存" << Qt::endl;
-    out << "  s/status              - 显示连接状态" << Qt::endl;
-    out << "  list                  - 列出可用串口" << Qt::endl;
+    out << "EmberInterDebugTool CLI v1.0.0" << Qt::endl;
+    out << Qt::endl;
+    out << "会话管理:" << Qt::endl;
     out << "  connect <port> [baud] - 连接串口" << Qt::endl;
-    out << "  disc/disconnect       - 断开串口" << Qt::endl;
-    out << "  send <data>           - 发送文本数据" << Qt::endl;
-    out << "  sendhex <hex>         - 发送HEX数据" << Qt::endl;
-    out << "  filter <keyword>      - 设置过滤关键词" << Qt::endl;
-    out << "  hex / text            - 切换显示模式" << Qt::endl;
-    out << "  timestamp / ts        - 切换时间戳" << Qt::endl;
-    out << "  export <file>         - 导出JSON日志" << Qt::endl;
-    out << "  help / ?              - 显示帮助" << Qt::endl;
+    out << "  disconnect             - 断开当前串口" << Qt::endl;
+    out << "  disc                   - 断开当前串口 (简写)" << Qt::endl;
+    out << "  status                 - 显示连接状态" << Qt::endl;
+    out << "  list                   - 列出可用串口" << Qt::endl;
+    out << Qt::endl;
+    out << "数据发送:" << Qt::endl;
+    out << "  send <data>            - 发送文本数据 (自动追加CRLF)" << Qt::endl;
+    out << "  sendhex <hex>          - 发送HEX数据" << Qt::endl;
+    out << Qt::endl;
+    out << "日志操作:" << Qt::endl;
+    out << "  clear                  - 清空日志缓存" << Qt::endl;
+    out << "  filter <keyword>       - 设置过滤关键词 (空=取消过滤)" << Qt::endl;
+    out << "  hex / text             - 切换 HEX/文本 显示模式" << Qt::endl;
+    out << "  timestamp / ts         - 切换时间戳显示" << Qt::endl;
+    out << "  export <file>          - 导出日志为JSON文件" << Qt::endl;
+    out << Qt::endl;
+    out << "其他:" << Qt::endl;
+    out << "  help / ?               - 显示此帮助" << Qt::endl;
+    out << "  quit / q / exit        - 退出CLI (GUI继续运行)" << Qt::endl;
+    out << Qt::endl;
+    out << "提示: 未识别的命令将作为文本数据发送到串口" << Qt::endl;
     out << Qt::endl;
 }
 
 void CLIApp::printUsage() const
 {
     QTextStream out(stdout);
-    out << "用法: emberInter-cli [选项]" << Qt::endl;
-    out << "  -p, --port PORT       串口名称" << Qt::endl;
-    out << "  --list                列出可用串口" << Qt::endl;
-    out << "  --get-status          显示连接状态" << Qt::endl;
-    out << "  --get-logs N          获取最近N条日志" << Qt::endl;
-    out << "  --json                JSON输出模式" << Qt::endl;
-    out << "  --cli                 交互模式" << Qt::endl;
+    out << "EmberInterDebugTool v1.0.0 - 尘智 | 微尘藏星火,终端蕴尘智" << Qt::endl << Qt::endl;
+    out << "用法: EmberInterDebugTool-cli [选项]" << Qt::endl << Qt::endl;
+    out << "监听模式 (需先启动GUI):" << Qt::endl;
+    out << "  -p, --port PORT       指定串口, 实时接收日志 (需先通过GUI连接该串口)" << Qt::endl;
+    out << "  --cli                 交互CLI模式, 需配合 -p PORT 使用" << Qt::endl;
+    out << "  -f, --filter KW       过滤关键词, 只显示包含关键词的日志" << Qt::endl;
+    out << "  -o, --output FILE     同时保存日志到文件" << Qt::endl;
     out << "  --hex                 HEX显示模式" << Qt::endl;
-    out << "  -f, --filter KW       过滤关键词" << Qt::endl;
-    out << "  -o, --output FILE     保存到文件" << Qt::endl;
-    out << "  --ipc NAME            IPC服务名称" << Qt::endl;
-    out << "  -h, --help            显示帮助" << Qt::endl;
+    out << "  --no-timestamp        不显示时间戳" << Qt::endl;
+    out << "  --json                JSON输出模式" << Qt::endl;
+    out << "  --clear               启动时清空GUI日志缓冲" << Qt::endl;
+    out << "  --ipc NAME            IPC服务名称 (默认: serial_monitor_ipc)" << Qt::endl;
+    out << Qt::endl;
+    out << "操作命令 (需先启动GUI):" << Qt::endl;
+    out << "  --connect PORT        连接指定串口, 可用 --baudrate 指定波特率" << Qt::endl;
+    out << "  --baudrate RATE       配合 --connect 使用, 设置波特率 (默认: 115200)" << Qt::endl;
+    out << "  --send DATA           发送文本数据 (自动追加CRLF), 完成后退出" << Qt::endl;
+    out << "  --list                列出可用串口设备" << Qt::endl;
+    out << "  --get-status          显示当前连接状态" << Qt::endl;
+    out << "  --get-logs N          获取最近N条日志" << Qt::endl;
+    out << Qt::endl;
+    out << "帮助:" << Qt::endl;
+    out << "  -h, --help            显示此帮助信息" << Qt::endl;
+    out << "  -v, --version         显示版本信息" << Qt::endl;
+    out << Qt::endl;
+    out << "示例:" << Qt::endl;
+    out << "  EmberInterDebugTool-cli --list                            # 列出所有串口" << Qt::endl;
+    out << "  EmberInterDebugTool-cli --connect COM3 --baudrate 9600    # 连接COM3" << Qt::endl;
+    out << "  EmberInterDebugTool-cli -p COM3                           # 监听COM3日志" << Qt::endl;
+    out << "  EmberInterDebugTool-cli -p COM3 --cli                     # 交互模式监听COM3" << Qt::endl;
+    out << "  EmberInterDebugTool-cli --send \"AT+GMR\" -p COM3           # 发送命令并观察回复" << Qt::endl;
+    out << "  EmberInterDebugTool-cli --get-logs 50                     # 获取最近50条日志" << Qt::endl;
+    out << "  EmberInterDebugTool-cli -p COM3 -f ERROR                  # 只显示含ERROR的日志" << Qt::endl;
+    out << "  EmberInterDebugTool-cli -p COM3 -o debug.log              # 监听并保存到文件" << Qt::endl;
+    out << "  EmberInterDebugTool-cli --get-status                      # 查看连接状态" << Qt::endl;
 }

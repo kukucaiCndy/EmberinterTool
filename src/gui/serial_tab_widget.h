@@ -27,9 +27,8 @@ public:
     void updateTabName(int index, const QString& name);
 
 signals:
-    void connectRequested(int index, const SerialConfig& config);
-    void disconnectRequested(int index);
     void tabChanged(int index);
+    void tabCloseRequested(int index);
 
 private:
     QVector<TabInfo*> tabs_;

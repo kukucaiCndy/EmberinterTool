@@ -7,7 +7,9 @@ SerialTabWidget::SerialTabWidget(QWidget* parent)
     setMovable(true);
 
     connect(this, &QTabWidget::currentChanged, this, &SerialTabWidget::tabChanged);
-    connect(this, &QTabWidget::tabCloseRequested, this, &SerialTabWidget::removeTab);
+    connect(this, &QTabWidget::tabCloseRequested, [this](int index) {
+        emit tabCloseRequested(index);
+    });
 }
 
 int SerialTabWidget::addSerialTab(const QString& port, const QString& name)

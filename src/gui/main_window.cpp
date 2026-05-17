@@ -1,36 +1,32 @@
 #include "main_window.h"
 #include "config_manager.h"
 #include "settings_dialog.h"
+#include "serial_port_dialog.h"
 #include "log_parser.h"
 #include "log_exporter.h"
 #include "ipc_protocol.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QMenuBar>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QCloseEvent>
 #include <QFile>
+#include <QPixmap>
 #include <QApplication>
+#include <QDateTime>
 #include <QStyleFactory>
 #include <QJsonArray>
 #include <QSerialPortInfo>
 #include <QRegularExpression>
+#include <QMenu>
 #include <spdlog/spdlog.h>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
     , splitter_(nullptr)
     , sidebar_(nullptr)
-    , portList_(nullptr)
-    , portCombo_(nullptr)
-    , baudCombo_(nullptr)
-    , dataBitsCombo_(nullptr)
-    , parityCombo_(nullptr)
-    , stopBitsCombo_(nullptr)
-    , connectBtn_(nullptr)
+    , savedPortList_(nullptr)
     , tabWidget_(nullptr)
-    , addTabBtn_(nullptr)
     , logView_(nullptr)
     , filterEdit_(nullptr)
     , displayModeCombo_(nullptr)
@@ -46,14 +42,13 @@ MainWindow::MainWindow(QWidget* parent)
     , rxBytes_(0)
     , txBytes_(0)
 {
-    setWindowTitle("emberInter - 尘智串口调试工具");
+    setWindowTitle("EmberInterDebugTool v1.0.0 - 尘智 | 微尘藏星火,终端蕴尘智");
     setMinimumSize(900, 600);
 
     setupUi();
     setupConnections();
     loadTheme();
     loadConfig();
-    scanSerialPorts();
 }
 
 MainWindow::~MainWindow()
@@ -69,6 +64,25 @@ void MainWindow::loadTheme()
         qApp->setStyleSheet(style);
         qss.close();
     }
+}
+
+void MainWindow::onAbout()
+{
+    QMessageBox about(this);
+    about.setWindowTitle("关于 EmberInterDebugTool");
+    about.setIconPixmap(QPixmap(":/icons/logo.png").scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    about.setText(
+        "<h2>EmberInterDebugTool</h2>"
+        "<p style=\"color:#94A3B8; font-size:15px;\">尘智</p>"
+        "<p style=\"color:#64748B; font-size:12px;\">"
+        "微尘藏星火，终端蕴尘智<br>"
+        "以尘之微，铸智之核<br>"
+        "赋能边缘嵌入式"
+        "</p>"
+        "<hr>"
+        "<p>版本: 1.0.0</p>"
+    );
+    about.exec();
 }
 
 void MainWindow::setupUi()
@@ -89,7 +103,7 @@ void MainWindow::setupUi()
     splitter_->addWidget(mainArea);
     splitter_->setStretchFactor(0, 0);
     splitter_->setStretchFactor(1, 1);
-    splitter_->setSizes({260, 740});
+    splitter_->setSizes({220, 860});
 
     setCentralWidget(splitter_);
     resize(1080, 720);
@@ -101,86 +115,77 @@ void MainWindow::setupSidebar(QWidget* sidebar)
     layout->setContentsMargins(0, 8, 0, 8);
     layout->setSpacing(0);
 
-    QLabel* brandLabel = new QLabel("emberInter 尘智", sidebar);
-    brandLabel->setStyleSheet("color: #22C55E; font-size: 14px; font-weight: 800; "
-                              "padding: 8px 20px 12px 20px;");
-    layout->addWidget(brandLabel);
+    QWidget* brandWidget = new QWidget(sidebar);
+    brandWidget->setObjectName("brandWidget");
+    QHBoxLayout* brandLayout = new QHBoxLayout(brandWidget);
+    brandLayout->setContentsMargins(12, 8, 12, 8);
+    brandLayout->setSpacing(8);
 
-    QLabel* connTitle = new QLabel("连接设置", sidebar);
+    QLabel* logoLabel = new QLabel(brandWidget);
+    QPixmap logoPix(":/icons/logo.png");
+    logoLabel->setPixmap(logoPix.scaled(28, 28, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    logoLabel->setFixedSize(28, 28);
+    brandLayout->addWidget(logoLabel);
+
+    QLabel* enName = new QLabel("EmberInterDebugTool", brandWidget);
+    enName->setStyleSheet("color: #22C55E; font-size: 11px; font-weight: 800;");
+    brandLayout->addWidget(enName);
+
+    QLabel* cnName = new QLabel("尘智", brandWidget);
+    cnName->setStyleSheet("color: #94A3B8; font-size: 12px; font-weight: 600;");
+    brandLayout->addWidget(cnName);
+
+    brandLayout->addStretch();
+    layout->addWidget(brandWidget);
+
+    QWidget* sectionHeader = new QWidget(sidebar);
+    sectionHeader->setObjectName("sectionHeader");
+    QHBoxLayout* sectionLayout = new QHBoxLayout(sectionHeader);
+    sectionLayout->setContentsMargins(0, 0, 12, 0);
+    sectionLayout->setSpacing(0);
+
+    QLabel* connTitle = new QLabel("我的会话", sidebar);
     connTitle->setObjectName("sectionTitle");
-    layout->addWidget(connTitle);
+    sectionLayout->addWidget(connTitle, 1);
 
-    QWidget* connectPanel = new QWidget(sidebar);
-    connectPanel->setObjectName("connectPanel");
-    QVBoxLayout* cpLayout = new QVBoxLayout(connectPanel);
-    cpLayout->setContentsMargins(0, 4, 0, 4);
-    cpLayout->setSpacing(0);
+    QPushButton* addSessionBtn = new QPushButton("+", sidebar);
+    addSessionBtn->setObjectName("addSessionBtn");
+    addSessionBtn->setFixedSize(28, 28);
+    addSessionBtn->setCursor(Qt::PointingHandCursor);
+    addSessionBtn->setToolTip("新建会话");
+    connect(addSessionBtn, &QPushButton::clicked, this, &MainWindow::onAddSavedPort);
+    sectionLayout->addWidget(addSessionBtn);
 
-    cpLayout->addWidget(new QLabel("串口号", connectPanel));
-    portCombo_ = new QComboBox(connectPanel);
-    portCombo_->setEditable(true);
-    portCombo_->setInsertPolicy(QComboBox::NoInsert);
-    cpLayout->addWidget(portCombo_);
+    layout->addWidget(sectionHeader);
 
-    cpLayout->addWidget(new QLabel("波特率", connectPanel));
-    baudCombo_ = new QComboBox(connectPanel);
-    baudCombo_->setEditable(true);
-    baudCombo_->addItems({"115200", "921600", "460800", "230400", "57600", "38400", "19200", "9600"});
-    baudCombo_->setCurrentText("115200");
-    cpLayout->addWidget(baudCombo_);
-
-    cpLayout->addWidget(new QLabel("数据位", connectPanel));
-    dataBitsCombo_ = new QComboBox(connectPanel);
-    dataBitsCombo_->setObjectName("connectParams");
-    dataBitsCombo_->addItems({"8", "7", "6", "5"});
-    dataBitsCombo_->setCurrentIndex(0);
-    cpLayout->addWidget(dataBitsCombo_);
-
-    cpLayout->addWidget(new QLabel("校验位", connectPanel));
-    parityCombo_ = new QComboBox(connectPanel);
-    parityCombo_->setObjectName("connectParams");
-    parityCombo_->addItems({"无校验", "偶校验", "奇校验", "标记校验", "空格校验"});
-    parityCombo_->setCurrentIndex(0);
-    cpLayout->addWidget(parityCombo_);
-
-    cpLayout->addWidget(new QLabel("停止位", connectPanel));
-    stopBitsCombo_ = new QComboBox(connectPanel);
-    stopBitsCombo_->setObjectName("connectParams");
-    stopBitsCombo_->addItems({"1", "1.5", "2"});
-    stopBitsCombo_->setCurrentIndex(0);
-    cpLayout->addWidget(stopBitsCombo_);
-
-    connectBtn_ = new QPushButton("连接", connectPanel);
-    connectBtn_->setObjectName("connectBtn");
-    connectBtn_->setCursor(Qt::PointingHandCursor);
-    cpLayout->addWidget(connectBtn_);
-
-    layout->addWidget(connectPanel);
+    savedPortList_ = new QListWidget(sidebar);
+    savedPortList_->setObjectName("savedPortList");
+    savedPortList_->setCursor(Qt::PointingHandCursor);
+    savedPortList_->setContextMenuPolicy(Qt::CustomContextMenu);
+    savedPortList_->setTextElideMode(Qt::ElideRight);
+    connect(savedPortList_, &QListWidget::itemClicked, this, &MainWindow::onSavedPortClicked);
+    connect(savedPortList_, &QListWidget::customContextMenuRequested, this, &MainWindow::onSavedPortContextMenu);
+    layout->addWidget(savedPortList_, 1);
 
     layout->addSpacing(8);
 
-    QLabel* portsTitle = new QLabel("可用串口", sidebar);
-    portsTitle->setObjectName("sectionTitle");
-    layout->addWidget(portsTitle);
-
-    portList_ = new QListWidget(sidebar);
-    portList_->setObjectName("portList");
-    portList_->setCursor(Qt::PointingHandCursor);
-    layout->addWidget(portList_, 1);
-
-    QPushButton* refreshBtn = new QPushButton("刷新", sidebar);
-    refreshBtn->setObjectName("refreshBtn");
-    refreshBtn->setCursor(Qt::PointingHandCursor);
-    connect(refreshBtn, &QPushButton::clicked, this, &MainWindow::onRefreshPorts);
-    layout->addWidget(refreshBtn);
-
-    layout->addSpacing(8);
+    QHBoxLayout* bottomBtnLayout = new QHBoxLayout();
+    bottomBtnLayout->setContentsMargins(12, 0, 12, 8);
+    bottomBtnLayout->setSpacing(6);
 
     QPushButton* settingsBtn = new QPushButton("设置", sidebar);
-    settingsBtn->setObjectName("refreshBtn");
+    settingsBtn->setObjectName("bottomBtn");
     settingsBtn->setCursor(Qt::PointingHandCursor);
     connect(settingsBtn, &QPushButton::clicked, this, &MainWindow::onSettings);
-    layout->addWidget(settingsBtn);
+    bottomBtnLayout->addWidget(settingsBtn);
+
+    QPushButton* aboutBtn = new QPushButton("关于", sidebar);
+    aboutBtn->setObjectName("bottomBtn");
+    aboutBtn->setCursor(Qt::PointingHandCursor);
+    connect(aboutBtn, &QPushButton::clicked, this, &MainWindow::onAbout);
+    bottomBtnLayout->addWidget(aboutBtn);
+
+    layout->addLayout(bottomBtnLayout);
 }
 
 void MainWindow::setupMainArea(QWidget* mainArea)
@@ -196,13 +201,6 @@ void MainWindow::setupMainArea(QWidget* mainArea)
 
     tabWidget_ = new SerialTabWidget(mainArea);
     tbLayout->addWidget(tabWidget_, 1);
-
-    addTabBtn_ = new QPushButton("+", mainArea);
-    addTabBtn_->setObjectName("addTabBtn");
-    addTabBtn_->setFixedSize(32, 32);
-    addTabBtn_->setCursor(Qt::PointingHandCursor);
-    addTabBtn_->setToolTip("新建标签页");
-    tbLayout->addWidget(addTabBtn_);
     layout->addWidget(tabBar);
 
     logView_ = new LogView(mainArea);
@@ -251,29 +249,43 @@ void MainWindow::setupMainArea(QWidget* mainArea)
 
 void MainWindow::setupConnections()
 {
-    connect(connectBtn_, &QPushButton::clicked, this, &MainWindow::onConnectOrDisconnect);
     connect(pauseBtn_, &QPushButton::toggled, this, &MainWindow::onPauseToggled);
     connect(clearBtn_, &QPushButton::clicked, this, &MainWindow::onClear);
     connect(exportBtn_, &QPushButton::clicked, this, &MainWindow::onExport);
     connect(filterEdit_, &QLineEdit::textChanged, this, &MainWindow::onFilterChanged);
     connect(displayModeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             [this](int idx) { logView_->setHexMode(idx == 1); });
-    connect(addTabBtn_, &QPushButton::clicked, this, &MainWindow::onAddTab);
-    connect(portList_, &QListWidget::currentTextChanged, this, &MainWindow::onPortSelected);
     connect(tabWidget_, &SerialTabWidget::tabChanged, this, &MainWindow::onTabChanged);
+    connect(tabWidget_, &SerialTabWidget::tabCloseRequested, this, &MainWindow::onTabClosed);
 
     connect(sendPanel_, &SendPanel::sendText, [this](const QString& data, const QString& append) {
         TabInfo* tab = tabWidget_->currentTabInfo();
         if (tab && tab->engine && tab->connected) {
             qint64 sent = tab->engine->sendText(data, append);
-            if (sent > 0) txBytes_ += sent;
+            if (sent > 0) {
+                txBytes_ += sent;
+                QString displayed = data + (append == "CRLF" ? "\r\n" : append == "LF" ? "\n" : "");
+                LogEntry entry(QDateTime::currentDateTime().toString("HH:mm:ss.zzz"),
+                               "TX", displayed.toUtf8(), displayed.toUtf8(), tab->port);
+                logBuffer_->append(entry);
+                logView_->appendEntry(entry);
+                ipcServer_->broadcastLog(entry);
+            }
         }
     });
     connect(sendPanel_, &SendPanel::sendHex, [this](const QByteArray& data) {
         TabInfo* tab = tabWidget_->currentTabInfo();
         if (tab && tab->engine && tab->connected) {
             qint64 sent = tab->engine->sendHex(data);
-            if (sent > 0) txBytes_ += sent;
+            if (sent > 0) {
+                txBytes_ += sent;
+                QString hexStr = QString(data.toHex(' ').toUpper());
+                LogEntry entry(QDateTime::currentDateTime().toString("HH:mm:ss.zzz"),
+                               "TX", hexStr, data, tab->port);
+                logBuffer_->append(entry);
+                logView_->appendEntry(entry);
+                ipcServer_->broadcastLog(entry);
+            }
         }
     });
 
@@ -371,8 +383,30 @@ void MainWindow::setupConnections()
             }
 
             if (tab && tab->connected) {
-                onConnectOrDisconnect();
+                disconnectCurrentPort();
             }
+
+            for (int i = 0; i < savedPorts_.size(); ++i) {
+                if (savedPorts_[i].port == port) {
+                    PendingConnectRequest pending;
+                    pending.clientId = clientId;
+                    pending.requestId = reqId;
+                    pending.port = port;
+                    pending.baudrate = baud;
+                    pendingConnects_[port] = pending;
+                    connectSavedPort(i);
+                    return;
+                }
+            }
+
+            SavedPort sp;
+            sp.port = port;
+            sp.name = port;
+            sp.baudrate = baud;
+            savedPorts_.append(sp);
+            QListWidgetItem* item = new QListWidgetItem(sp.summary(), savedPortList_);
+            item->setData(Qt::UserRole, savedPorts_.size() - 1);
+            savedPortList_->addItem(item);
 
             PendingConnectRequest pending;
             pending.clientId = clientId;
@@ -380,13 +414,10 @@ void MainWindow::setupConnections()
             pending.port = port;
             pending.baudrate = baud;
             pendingConnects_[port] = pending;
-
-            portCombo_->setCurrentText(port);
-            baudCombo_->setCurrentText(QString::number(baud));
-            onConnectOrDisconnect();
+            connectSavedPort(savedPorts_.size() - 1);
         }
         else if (cmd == "disconnect") {
-            onConnectOrDisconnect();
+            disconnectCurrentPort();
             data["message"] = "已断开";
             ipcServer_->sendResponse(clientId, reqId, true, data);
         }
@@ -396,7 +427,15 @@ void MainWindow::setupConnections()
             TabInfo* tab = tabWidget_->currentTabInfo();
             if (tab && tab->engine && tab->connected) {
                 qint64 sent = tab->engine->sendText(text, append);
-                if (sent > 0) txBytes_ += sent;
+                if (sent > 0) {
+                    txBytes_ += sent;
+                    QString displayed = text + (append == "CRLF" ? "\r\n" : append == "LF" ? "\n" : "");
+                    LogEntry entry(QDateTime::currentDateTime().toString("HH:mm:ss.zzz"),
+                                   "TX", displayed.toUtf8(), displayed.toUtf8(), tab->port);
+                    logBuffer_->append(entry);
+                    logView_->appendEntry(entry);
+                    ipcServer_->broadcastLog(entry);
+                }
                 data["bytes_sent"] = sent;
                 data["message"] = QString("已发送 %1 字节").arg(sent);
                 ipcServer_->sendResponse(clientId, reqId, sent > 0, data);
@@ -424,7 +463,15 @@ void MainWindow::setupConnections()
             TabInfo* tab = tabWidget_->currentTabInfo();
             if (tab && tab->engine && tab->connected) {
                 qint64 sent = tab->engine->sendHex(bytes);
-                if (sent > 0) txBytes_ += sent;
+                if (sent > 0) {
+                    txBytes_ += sent;
+                    QString displayHex = QString(bytes.toHex(' ').toUpper());
+                    LogEntry entry(QDateTime::currentDateTime().toString("HH:mm:ss.zzz"),
+                                   "TX", displayHex, bytes, tab->port);
+                    logBuffer_->append(entry);
+                    logView_->appendEntry(entry);
+                    ipcServer_->broadcastLog(entry);
+                }
                 data["bytes_sent"] = sent;
                 data["message"] = QString("已发送 %1 字节 (HEX)").arg(sent);
                 ipcServer_->sendResponse(clientId, reqId, sent > 0, data);
@@ -475,102 +522,149 @@ void MainWindow::setupConnections()
     });
 }
 
-void MainWindow::scanSerialPorts()
+void MainWindow::onAddSavedPort()
 {
-    portList_->clear();
-    portCombo_->clear();
+    SerialPortDialog dlg(this);
 
-    QList<QSerialPortInfo> ports = QSerialPortInfo::availablePorts();
-    for (const auto& info : ports) {
-        QString desc = info.description().isEmpty() ? info.portName()
-            : QString("%1 - %2").arg(info.portName(), info.description());
+    if (dlg.exec() == QDialog::Accepted) {
+        SavedPort sp = dlg.savedPort();
+        if (sp.port.isEmpty()) return;
 
-        portCombo_->addItem(info.portName());
-        portList_->addItem(desc);
+        sp.name = sp.name.isEmpty() ? sp.port : sp.name;
+        savedPorts_.append(sp);
 
-        bool recommended = info.description().contains("USB", Qt::CaseInsensitive)
-                        || info.description().contains("JLink", Qt::CaseInsensitive)
-                        || info.description().contains("nRF", Qt::CaseInsensitive)
-                        || info.description().contains("CDC", Qt::CaseInsensitive);
+        QListWidgetItem* item = new QListWidgetItem(sp.summary(), savedPortList_);
+        item->setData(Qt::UserRole, savedPorts_.size() - 1);
+        savedPortList_->addItem(item);
 
-        if (recommended) {
-            QListWidgetItem* item = portList_->item(portList_->count() - 1);
-            QFont f = item->font();
-            f.setBold(true);
-            item->setFont(f);
-            item->setForeground(QColor("#22C55E"));
+        int tabIdx = tabWidget_->addSerialTab(sp.port, sp.name);
+        tabWidget_->setCurrentIndex(tabIdx);
+
+        connectSavedPort(savedPorts_.size() - 1);
+        saveConfig();
+    }
+}
+
+void MainWindow::onEditSavedPort()
+{
+    QListWidgetItem* item = savedPortList_->currentItem();
+    if (!item) return;
+    int idx = item->data(Qt::UserRole).toInt();
+    if (idx < 0 || idx >= savedPorts_.size()) return;
+
+    SerialPortDialog dlg(this);
+    dlg.setSavedPort(savedPorts_[idx]);
+    if (dlg.exec() == QDialog::Accepted) {
+        savedPorts_[idx] = dlg.savedPort();
+        item->setText(savedPorts_[idx].summary());
+        saveConfig();
+    }
+}
+
+void MainWindow::onDeleteSavedPort()
+{
+    QListWidgetItem* item = savedPortList_->currentItem();
+    if (!item) return;
+    int idx = item->data(Qt::UserRole).toInt();
+    if (idx < 0 || idx >= savedPorts_.size()) return;
+
+    if (QMessageBox::question(this, "确认", QString("确定删除串口 \"%1\"?").arg(savedPorts_[idx].summary()),
+            QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes) return;
+
+    TabInfo* tab = tabWidget_->currentTabInfo();
+    if (tab && tab->port == savedPorts_[idx].port && tab->connected) {
+        disconnectCurrentPort();
+    }
+
+    savedPorts_.removeAt(idx);
+    delete item;
+
+    for (int i = 0; i < savedPortList_->count(); ++i) {
+        savedPortList_->item(i)->setData(Qt::UserRole, i);
+    }
+
+    saveConfig();
+}
+
+void MainWindow::onDisconnectAction()
+{
+    disconnectCurrentPort();
+}
+
+void MainWindow::onConnectAction()
+{
+    QListWidgetItem* item = savedPortList_->currentItem();
+    if (!item) return;
+    onSavedPortClicked(item);
+}
+
+void MainWindow::onSavedPortClicked(QListWidgetItem* item)
+{
+    if (!item) return;
+    int idx = item->data(Qt::UserRole).toInt();
+    if (idx < 0 || idx >= savedPorts_.size()) return;
+
+    TabInfo* tab = tabWidget_->currentTabInfo();
+    if (tab && tab->port == savedPorts_[idx].port && tab->connected) {
+        return;
+    }
+
+    connectSavedPort(idx);
+}
+
+void MainWindow::onSavedPortContextMenu(const QPoint& pos)
+{
+    QListWidgetItem* item = savedPortList_->itemAt(pos);
+    if (!item) return;
+    savedPortList_->setCurrentItem(item);
+
+    QMenu menu(this);
+
+    int idx = item->data(Qt::UserRole).toInt();
+
+    bool isConnected = false;
+    for (TabInfo* t : tabWidget_->allTabs()) {
+        if (t->port == savedPorts_[idx].port && t->connected) {
+            isConnected = true;
+            break;
         }
     }
 
-    if (ports.isEmpty()) {
-        portList_->addItem("未发现串口");
-        portList_->item(0)->setFlags(Qt::NoItemFlags);
+    if (isConnected) {
+        QAction* disconnectAction = menu.addAction("断开");
+        connect(disconnectAction, &QAction::triggered, this, &MainWindow::onDisconnectAction);
+    } else {
+        QAction* connectAction = menu.addAction("连接");
+        connect(connectAction, &QAction::triggered, this, &MainWindow::onConnectAction);
     }
 
-    statusBar_->setIpcClientCount(ipcServer_->clientCount());
+    QAction* editAction = menu.addAction("编辑配置");
+    connect(editAction, &QAction::triggered, this, &MainWindow::onEditSavedPort);
+    QAction* deleteAction = menu.addAction("删除");
+    connect(deleteAction, &QAction::triggered, this, &MainWindow::onDeleteSavedPort);
+    menu.exec(savedPortList_->mapToGlobal(pos));
 }
 
-void MainWindow::onRefreshPorts()
+void MainWindow::connectSavedPort(int savedIdx)
 {
-    scanSerialPorts();
-}
+    if (savedIdx < 0 || savedIdx >= savedPorts_.size()) return;
+    const SavedPort& sp = savedPorts_[savedIdx];
 
-void MainWindow::onPortSelected(const QString& port)
-{
-    QString portName = port.split(" - ").first().trimmed();
-    portCombo_->setCurrentText(portName);
-}
+    SavedPort spCopy = sp;
 
-void MainWindow::onConnectOrDisconnect()
-{
     TabInfo* tab = tabWidget_->currentTabInfo();
-    if (!tab) return;
+    if (!tab) {
+        int newIdx = tabWidget_->addSerialTab("", "");
+        tabWidget_->setCurrentIndex(newIdx);
+        tab = tabWidget_->currentTabInfo();
+        if (!tab) return;
+    }
 
     if (tab->connected) {
-        if (tab->engine) {
-            tab->engine->close();
-            tab->engine->deleteLater();
-            tab->engine = nullptr;
-        }
-        tab->connected = false;
-        tab->port.clear();
-        tabWidget_->setTabConnected(tabWidget_->currentIndex(), false);
-        updateConnectButtonState(false);
-        statusBar_->setConnectionStatus(false);
-        connectionTimerRunning_ = false;
-        return;
+        disconnectCurrentPort();
     }
 
-    QString port = portCombo_->currentText().trimmed();
-    if (port.isEmpty()) {
-        QMessageBox::warning(this, "提示", "请选择或输入串口号。");
-        return;
-    }
-
-    SerialConfig config;
-    config.port = port;
-    config.baudrate = baudCombo_->currentText().toInt();
-
-    config.databits = static_cast<QSerialPort::DataBits>(
-        dataBitsCombo_->currentText().toInt());
-
-    int parityIdx = parityCombo_->currentIndex();
-    switch (parityIdx) {
-        case 1: config.parity = QSerialPort::EvenParity; break;
-        case 2: config.parity = QSerialPort::OddParity; break;
-        case 3: config.parity = QSerialPort::MarkParity; break;
-        case 4: config.parity = QSerialPort::SpaceParity; break;
-        default: config.parity = QSerialPort::NoParity; break;
-    }
-
-    int stopIdx = stopBitsCombo_->currentIndex();
-    switch (stopIdx) {
-        case 1: config.stopbits = QSerialPort::OneAndHalfStop; break;
-        case 2: config.stopbits = QSerialPort::TwoStop; break;
-        default: config.stopbits = QSerialPort::OneStop; break;
-    }
-
-    tab->port = port;
+    tab->port = spCopy.port;
     tab->engine = new SerialEngine(this);
     connect(tab->engine, &SerialEngine::dataReceived,
             this, &MainWindow::onSerialDataReceived);
@@ -581,24 +675,25 @@ void MainWindow::onConnectOrDisconnect()
 
     auto& cfg = ConfigManager::instance().config();
     tab->engine->setAutoReconnect(cfg.display.autoReconnect);
-    tab->engine->open(config);
+    tab->engine->open(spCopy.toSerialConfig());
 
-    QString tabName = QString("%1 @ %2").arg(port).arg(config.baudrate);
+    QString tabName = QString("%1 @ %2").arg(spCopy.port).arg(spCopy.baudrate);
     tabWidget_->updateTabName(tabWidget_->currentIndex(), tabName);
 }
 
-void MainWindow::updateConnectButtonState(bool connected)
+void MainWindow::disconnectCurrentPort()
 {
-    if (connected) {
-        connectBtn_->setText("断开");
-        connectBtn_->setObjectName("disconnectBtn");
-    } else {
-        connectBtn_->setText("连接");
-        connectBtn_->setObjectName("connectBtn");
-    }
+    TabInfo* tab = tabWidget_->currentTabInfo();
+    if (!tab || !tab->engine) return;
 
-    connectBtn_->style()->unpolish(connectBtn_);
-    connectBtn_->style()->polish(connectBtn_);
+    tab->engine->close();
+    tab->engine->deleteLater();
+    tab->engine = nullptr;
+    tab->connected = false;
+    tab->port.clear();
+    tabWidget_->setTabConnected(tabWidget_->currentIndex(), false);
+    statusBar_->setConnectionStatus(false);
+    connectionTimerRunning_ = false;
 }
 
 void MainWindow::onSettings()
@@ -655,20 +750,34 @@ void MainWindow::onFilterChanged(const QString& text)
 
 void MainWindow::onTabChanged(int index)
 {
+    if (index < 0) {
+        logView_->clearLog();
+        logBuffer_->clear();
+        statusBar_->setPortInfo("", 0);
+        statusBar_->setConnectionStatus(false);
+        return;
+    }
+
     TabInfo* tab = tabWidget_->tabInfo(index);
     if (tab) {
-        updateConnectButtonState(tab->connected);
-        if (!tab->port.isEmpty()) {
-            portCombo_->setCurrentText(tab->port);
-        }
+        statusBar_->setPortInfo(tab->port, 0);
+        statusBar_->setConnectionStatus(tab->connected);
     }
 }
 
-void MainWindow::onAddTab()
+void MainWindow::onTabClosed(int index)
 {
-    int idx = tabWidget_->addSerialTab("", "");
-    tabWidget_->setCurrentIndex(idx);
-    updateConnectButtonState(false);
+    TabInfo* tab = tabWidget_->tabInfo(index);
+    if (tab && tab->engine && tab->connected) {
+        tab->engine->close();
+        tab->engine->deleteLater();
+        tab->engine = nullptr;
+        tab->connected = false;
+        tab->port.clear();
+        statusBar_->setConnectionStatus(false);
+        connectionTimerRunning_ = false;
+    }
+    tabWidget_->removeTab(index);
 }
 
 void MainWindow::onSerialDataReceived(const QByteArray& data, const QString& port)
@@ -705,21 +814,16 @@ void MainWindow::onSerialStatusChanged(const QString& port, bool connected,
         }
     }
 
-    TabInfo* current = tabWidget_->currentTabInfo();
-    if (current && current->port == port) {
-        updateConnectButtonState(connected);
-    }
-
-    statusBar_->setPortInfo(port, config.baudrate);
-    statusBar_->setConnectionStatus(connected);
-    statusBar_->setIpcClientCount(ipcServer_->clientCount());
-
     if (connected) {
         if (!connectionTimerRunning_) {
             connectionTimer_.start();
             connectionTimerRunning_ = true;
         }
     }
+
+    statusBar_->setPortInfo(port, config.baudrate);
+    statusBar_->setConnectionStatus(connected);
+    statusBar_->setIpcClientCount(ipcServer_->clientCount());
 
     if (pendingConnects_.contains(port)) {
         auto pending = pendingConnects_.take(port);
@@ -757,11 +861,11 @@ void MainWindow::loadConfig()
         logView_->setFont(f);
     }
 
-    for (const auto& tab : cfg.tabs) {
-        tabWidget_->addSerialTab(tab.port, tab.name);
-    }
-    if (tabWidget_->count() == 0) {
-        tabWidget_->addSerialTab("", "");
+    savedPorts_ = cfg.savedPorts;
+    for (int i = 0; i < savedPorts_.size(); ++i) {
+        QListWidgetItem* item = new QListWidgetItem(savedPorts_[i].summary(), savedPortList_);
+        item->setData(Qt::UserRole, i);
+        savedPortList_->addItem(item);
     }
 }
 
@@ -777,13 +881,8 @@ void MainWindow::saveConfig()
     cfg.display.fontSize = logView_->font().pointSize();
 
     cfg.tabs.clear();
-    for (const auto& t : tabWidget_->allTabs()) {
-        TabConfig tc;
-        tc.port = t->port;
-        tc.name = t->name;
-        cfg.tabs.append(tc);
-    }
 
+    cfg.savedPorts = savedPorts_;
     ConfigManager::instance().save();
 }
 

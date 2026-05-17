@@ -7,6 +7,7 @@ set(GUI_SOURCES
     status_bar.cpp
     settings_dialog.cpp
     ipc_server.cpp
+    serial_port_dialog.cpp
 )
 
 set(GUI_HEADERS
@@ -17,6 +18,7 @@ set(GUI_HEADERS
     status_bar.h
     settings_dialog.h
     ipc_server.h
+    serial_port_dialog.h
 )
 
 add_executable(serial-monitor

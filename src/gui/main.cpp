@@ -18,12 +18,12 @@ int main(int argc, char* argv[])
     auto fileLogger = spdlog::basic_logger_mt("app", "serial-monitor.log");
     spdlog::set_default_logger(fileLogger);
     spdlog::set_level(spdlog::level::info);
-    spdlog::info("emberInter Serial Monitor GUI starting");
+    spdlog::info("EmberInterDebugTool GUI starting");
 
     QApplication app(argc, argv);
-    app.setApplicationName("emberInter 尘智串口调试工具");
-    app.setApplicationVersion("2.0.0");
-    app.setOrganizationName("emberInter");
+    app.setApplicationName("EmberInterDebugTool");
+    app.setApplicationVersion("1.0.0");
+    app.setOrganizationName("EmberInter");
     app.setWindowIcon(QIcon(":/icons/logo.png"));
 
     ConfigManager::instance().load();
@@ -40,6 +40,6 @@ int main(int argc, char* argv[])
 
     int result = app.exec();
 
-    spdlog::info("emberInter Serial Monitor GUI exiting");
+    spdlog::info("EmberInterDebugTool GUI exiting");
     return result;
 }

@@ -196,6 +196,7 @@ QString LogView::makeDisplayText(const LogEntry& entry) const
 
 QColor LogView::getLineColor(const QString& level) const
 {
+    if (level == "TX")    return QColor("#22C55E");
     if (level == "ERROR") return QColor("#FF6B6B");
     if (level == "WARN")  return QColor("#FFD93D");
     if (level == "INFO")  return QColor("#6BCB77");

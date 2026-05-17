@@ -1,5 +1,5 @@
 /* ============================================================
-   emberInter 尘智 - Dark Terminal Theme
+   EmberInterDebugTool - Dark Terminal Theme
    Design System: Developer Tool / IDE
    Colors: #0F172A bg | #1E293B surface | #334155 border
    Accent: #22C55E green | Text: #F8FAFC | Error: #FF3333
@@ -28,15 +28,57 @@ QSplitter::handle:hover {
 #sidebar {
     background-color: #0F172A;
     border-right: 1px solid #1E293B;
-    min-width: 240px;
-    max-width: 280px;
+    min-width: 200px;
+}
+
+#sidebar > QWidget {
+    min-width: 0;
+}
+
+#bottomBtn {
+    background-color: #1E293B;
+    color: #94A3B8;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+#bottomBtn:hover {
+    background-color: #334155;
+    color: #F8FAFC;
 }
 
 #sidebar QLabel#sectionTitle {
     color: #64748B;
     font-size: 12px;
     font-weight: 600;
-    padding: 12px 16px 4px 16px;
+    padding: 12px 16px 4px 8px;
+}
+
+/* --- Section Header Row (title + add button) --- */
+#sectionHeader {
+    background: transparent;
+}
+
+#addSessionBtn {
+    background-color: transparent;
+    color: #64748B;
+    border: 1px dashed #334155;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+#addSessionBtn:hover {
+    color: #22C55E;
+    border-color: #22C55E;
+}
+
+/* --- Brand Widget --- */
+#brandWidget {
+    border-bottom: 1px solid #1E293B;
 }
 
 /* --- Connection Panel --- */
@@ -151,6 +193,33 @@ QSplitter::handle:hover {
     background-color: #DC2626;
 }
 
+/* --- Saved Port List --- */
+#savedPortList {
+    background-color: #1E293B;
+    color: #F8FAFC;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    margin: 8px 12px;
+    padding: 4px;
+    font-size: 13px;
+    outline: none;
+}
+
+#savedPortList::item {
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin: 1px 4px;
+}
+
+#savedPortList::item:hover {
+    background-color: #334155;
+}
+
+#savedPortList::item:selected {
+    background-color: #22C55E;
+    color: #0F172A;
+}
+
 /* --- Port List --- */
 #portList {
     background-color: #1E293B;
@@ -233,31 +302,17 @@ QTabBar::tab:selected:hover {
 }
 
 QTabBar::close-button {
-    image: none;
-    background: transparent;
-    border-radius: 4px;
-    padding: 2px;
+    subcontrol-position: right;
+    subcontrol-origin: padding;
+    image: url(:/icons/close.svg);
+    padding: 4px;
     margin-left: 8px;
+    border-radius: 4px;
+    background: transparent;
 }
 
 QTabBar::close-button:hover {
-    background: #334155;
-}
-
-/* --- Add Tab Button --- */
-#addTabBtn {
-    background: transparent;
-    color: #64748B;
-    border: 1px dashed #334155;
-    border-radius: 6px;
-    padding: 6px 14px;
-    font-size: 16px;
-    margin: 4px 8px;
-}
-
-#addTabBtn:hover {
-    color: #22C55E;
-    border-color: #22C55E;
+    background: #FF3333;
 }
 
 /* --- Log View --- */
