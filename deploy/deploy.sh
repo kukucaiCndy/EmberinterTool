@@ -21,42 +21,41 @@ echo "=== 复制可执行文件 ==="
 cp "$BUILD_DIR/bin/serial-monitor.exe" "$DEPLOY_DIR/"
 cp "$BUILD_DIR/bin/serial-monitor-cli.exe" "$DEPLOY_DIR/"
 
-echo "=== 解析 DLL 依赖 ==="
-collect_dlls() {
-    local exe="$1"
-    objdump -p "$exe" 2>/dev/null | grep "DLL Name:" | awk '{print $3}'
+echo "=== 递归解析 DLL 依赖 ==="
+
+SYSTEM_DLLS="kernel32.dll user32.dll gdi32.dll advapi32.dll shell32.dll
+comdlg32.dll ole32.dll oleaut32.dll winspool.drv comctl32.dll
+winmm.dll ws2_32.dll rpcrt4.dll imm32.dll msvcrt.dll shlwapi.dll
+uxtheme.dll dwmapi.dll version.dll setupapi.dll cfgmgr32.dll
+secur32.dll crypt32.dll wldap32.dll dnsapi.dll iphlpapi.dll
+bcrypt.dll ncrypt.dll powrprof.dll profapi.dll netapi32.dll mpr.dll
+userenv.dll dxgi.dll d3d11.dll usp10.dll dwrite.dll"
+
+is_system_dll() {
+    local name="$1"
+    local lower=$(echo "$name" | tr '[:upper:]' '[:lower:]')
+    for sys in $SYSTEM_DLLS; do
+        [ "$lower" = "$sys" ] && return 0
+    done
+    case "$lower" in
+        msvcp*.dll|vcruntime*.dll) return 0 ;;
+    esac
+    return 1
 }
 
-ALL_EXES=("$BUILD_DIR/bin/serial-monitor.exe" "$BUILD_DIR/bin/serial-monitor-cli.exe")
 copied_dlls=""
 
-for exe in "${ALL_EXES[@]}"; do
-    while IFS= read -r dll; do
+copy_dll_recursive() {
+    local target="$1"
+    local dlls=$(objdump -p "$target" 2>/dev/null | grep "DLL Name:" | awk '{print $3}')
+    
+    for dll in $dlls; do
         [ -z "$dll" ] && continue
-        dll_lower=$(echo "$dll" | tr '[:upper:]' '[:lower:]')
         
-        # Skip Windows system DLLs
-        case "$dll_lower" in
-            kernel32.dll|user32.dll|gdi32.dll|advapi32.dll|shell32.dll)
-                continue ;;
-            comdlg32.dll|ole32.dll|oleaut32.dll|winspool.drv|comctl32.dll)
-                continue ;;
-            winmm.dll|ws2_32.dll|rpcrt4.dll|imm32.dll|msvcrt.dll|shlwapi.dll)
-                continue ;;
-            uxtheme.dll|dwmapi.dll|version.dll|setupapi.dll|cfgmgr32.dll)
-                continue ;;
-            secur32.dll|crypt32.dll|wldap32.dll|dnsapi.dll|iphlpapi.dll)
-                continue ;;
-            bcrypt.dll|ncrypt.dll|powrprof.dll|profapi.dll)
-                continue ;;
-            msvcp*.dll|vcruntime*.dll)
-                continue ;;
-        esac
+        is_system_dll "$dll" && continue
         
-        # Skip already copied
-        echo "$copied_dlls" | grep -q "$dll" && continue
+        echo "$copied_dlls" | grep -qi "$dll" && continue
         
-        # Find the DLL
         found=$(find "$MINGW_DIR/bin" -maxdepth 1 -iname "$dll" -print -quit 2>/dev/null)
         if [ -z "$found" ]; then
             found=$(find "$MINGW_DIR" -maxdepth 3 -iname "$dll" -print -quit 2>/dev/null)
@@ -66,31 +65,13 @@ for exe in "${ALL_EXES[@]}"; do
             echo "  复制: $dll"
             cp "$found" "$DEPLOY_DIR/"
             copied_dlls="$copied_dlls"$'\n'"$dll"
+            copy_dll_recursive "$found"
         fi
-    done < <(collect_dlls "$exe")
-done
+    done
+}
 
-# Additional DLLs that might not appear in objdump but are needed at runtime
-extras=(
-    "libgcc_s_seh-1.dll"
-    "libstdc++-6.dll"
-    "libwinpthread-1.dll"
-    "libssp-0.dll"
-    "libfmt.dll"
-    "Qt5Core.dll"
-    "Qt5Gui.dll"
-    "Qt5Widgets.dll"
-    "Qt5SerialPort.dll"
-    "Qt5Network.dll"
-)
-for dll in "${extras[@]}"; do
-    echo "$copied_dlls" | grep -qi "$dll" && continue
-    found=$(find "$MINGW_DIR/bin" -maxdepth 1 -iname "$dll" -print -quit 2>/dev/null)
-    if [ -n "$found" ]; then
-        echo "  补充: $dll"
-        cp "$found" "$DEPLOY_DIR/"
-    fi
-done
+copy_dll_recursive "$BUILD_DIR/bin/serial-monitor.exe"
+copy_dll_recursive "$BUILD_DIR/bin/serial-monitor-cli.exe"
 
 echo "=== 复制 Qt 平台插件 ==="
 cp "$MINGW_DIR/share/qt5/plugins/platforms/qwindows.dll" "$DEPLOY_DIR/platforms/"
