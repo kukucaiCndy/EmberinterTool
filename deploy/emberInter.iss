@@ -3,7 +3,7 @@
 
 #define MyAppName "EmberInterDebugTool"
 #define MyAppCnName "尘智串口调试工具"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "EmberInter"
 #define MyAppExeName "serial-monitor.exe"
 
@@ -12,8 +12,8 @@ AppId={{B8F7A3D2-9C4E-4A1B-8F6D-3E2C5A7B9D1F}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\{#MyAppName}
-DefaultGroupName={#MyAppName}
+DefaultDirName={commonpf32}\EmberInterDebugTool
+DefaultGroupName=EmberInterDebugTool
 AllowNoIcons=yes
 OutputDir=..\dist
 OutputBaseFilename=emberInter-Setup-{#MyAppVersion}
@@ -22,7 +22,8 @@ SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
 DisableProgramGroupPage=yes
-UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile=emberInter\icons\app.ico
+UninstallDisplayIcon={app}\icons\app.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -39,11 +40,12 @@ Source: "emberInter\imageformats\*.dll"; DestDir: "{app}\imageformats"; Flags: i
 Source: "emberInter\styles\*"; DestDir: "{app}\styles"; Flags: ignoreversion
 Source: "emberInter\icons\*"; DestDir: "{app}\icons"; Flags: ignoreversion
 Source: "emberInter\*.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "emberInter\skill\*"; DestDir: "{app}\skill"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{group}\CLI 命令行"; Filename: "{app}\serial-monitor-cli.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\尘智串口调试工具 (GUI)"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\icons\app.ico"
+Name: "{group}\尘智串口调试工具 (CLI)"; Filename: "{app}\serial-monitor-cli.exe"; WorkingDir: "{app}"
+Name: "{autodesktop}\尘智串口调试工具"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\icons\app.ico"
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent shellexec
+Filename: "{app}\{#MyAppExeName}"; Description: "启动 尘智串口调试工具"; Flags: nowait postinstall skipifsilent shellexec

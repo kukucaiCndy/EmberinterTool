@@ -25,6 +25,7 @@ add_executable(serial-monitor
     ${GUI_SOURCES}
     ${GUI_HEADERS}
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+    ${CMAKE_SOURCE_DIR}/resources/icons/app.rc
 )
 
 target_include_directories(serial-monitor PRIVATE

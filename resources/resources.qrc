@@ -2,6 +2,7 @@
     <qresource prefix="/">
         <file>styles/dark_theme.qss</file>
         <file>icons/logo.png</file>
+        <file>icons/app.ico</file>
         <file>icons/close.svg</file>
     </qresource>
 </RCC>

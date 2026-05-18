@@ -9,6 +9,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QTimer>
+#include <QRegularExpression>
 #include <iostream>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -78,6 +79,7 @@ int CLIApp::run(int argc, char* argv[])
     parser.addOption(QCommandLineOption("json", "JSON输出模式"));
     parser.addOption(QCommandLineOption("ipc", "IPC服务名", "NAME", "serial_monitor_ipc"));
     parser.addOption(QCommandLineOption("send", "发送数据后退出", "DATA"));
+    parser.addOption(QCommandLineOption("send-hex", "发送HEX数据后退出", "HEX"));
     parser.addOption(QCommandLineOption("send-file", "发送二进制文件后退出", "FILE"));
     parser.addOption(QCommandLineOption("connect", "连接串口", "PORT"));
     parser.addOption(QCommandLineOption("baudrate", "--connect的波特率", "RATE", "115200"));
@@ -99,6 +101,7 @@ int CLIApp::run(int argc, char* argv[])
 
     bool needsIpc = parser.isSet("list") || parser.isSet("get-status") ||
                     parser.isSet("get-logs") || parser.isSet("send") ||
+                    parser.isSet("send-hex") ||
                     parser.isSet("send-file") ||
                     parser.isSet("connect") || parser.isSet("cli") ||
                     !parser.value("p").isEmpty();
@@ -175,6 +178,17 @@ int CLIApp::run(int argc, char* argv[])
         QString reqId = nextReqId();
         addPending();
         ipc_->sendCommand("send_file", params, reqId);
+    }
+
+    else if (parser.isSet("send-hex")) {
+        QString hexStr = parser.value("send-hex");
+        hexStr.remove(QRegularExpression("\\s"));
+        QJsonObject params;
+        params["data"] = hexStr;
+        params["port"] = parser.value("p");
+        QString reqId = nextReqId();
+        addPending();
+        ipc_->sendCommand("send_hex", params, reqId);
     }
 
     else if (parser.isSet("connect")) {
@@ -550,6 +564,7 @@ void CLIApp::printUsage() const
     out << "  --connect PORT        连接指定串口, 可用 --baudrate 指定波特率" << Qt::endl;
     out << "  --baudrate RATE       配合 --connect 使用, 设置波特率 (默认: 115200)" << Qt::endl;
     out << "  --send DATA           发送文本数据 (自动追加CRLF), 完成后退出" << Qt::endl;
+    out << "  --send-hex HEX        发送HEX数据, 完成后退出" << Qt::endl;
     out << "  --send-file FILE      发送二进制文件 (Base64编码传输), 完成后退出" << Qt::endl;
     out << "  --list                列出可用串口设备" << Qt::endl;
     out << "  --get-status          显示当前连接状态" << Qt::endl;
@@ -565,6 +580,7 @@ void CLIApp::printUsage() const
     out << "  EmberInterDebugTool-cli -p COM3                           # 监听COM3日志" << Qt::endl;
     out << "  EmberInterDebugTool-cli -p COM3 --cli                     # 交互模式监听COM3" << Qt::endl;
     out << "  EmberInterDebugTool-cli --send \"AT+GMR\" -p COM3           # 发送命令并观察回复" << Qt::endl;
+    out << "  EmberInterDebugTool-cli --send-hex \"FF AB 03\" -p COM3      # 发送HEX字节" << Qt::endl;
     out << "  EmberInterDebugTool-cli --send-file firmware.bin -p COM3    # 发送二进制固件" << Qt::endl;
     out << "  EmberInterDebugTool-cli --get-logs 50                     # 获取最近50条日志" << Qt::endl;
     out << "  EmberInterDebugTool-cli -p COM3 -f ERROR                  # 只显示含ERROR的日志" << Qt::endl;
