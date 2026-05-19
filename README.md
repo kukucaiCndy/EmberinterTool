@@ -86,7 +86,7 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
-> **提示**: 若不确定设备的 Vendor/Product ID，可运行 `lsusb` 查看，或拔插设备后 `dmesg | tail` 查看内核日志。
+> **提示**: 若不能识别根据设备的 Vendor/Product ID添加规则，可运行 `lsusb` 查看，或拔插设备后 `dmesg | tail` 查看内核日志。
 
 ### 源码构建
 
