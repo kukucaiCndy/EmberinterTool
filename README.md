@@ -59,6 +59,35 @@ emberinter-cli --list
 sudo dpkg -r emberinter
 ```
 
+### Linux 串口权限配置
+
+Linux 下普通用户访问串口设备（如 `/dev/ttyUSB0`）通常需要 `dialout` 组权限。若遇到 "Permission denied" 错误，可通过 udev 规则自动授权。
+
+#### 方法一：将用户加入 dialout 组（推荐，永久生效）
+
+```bash
+sudo usermod -a -G dialout $USER
+# 注销并重新登录后生效
+```
+
+#### 方法二：udev 规则自动授权（即插即用）
+
+创建 `/etc/udev/rules.d/90-serial.rules`：
+
+```bash
+sudo tee /etc/udev/rules.d/90-serial.rules << 'EOF'
+# USB 串口设备（通配 ttyUSB* / ttyACM*）
+KERNEL=="ttyUSB[0-9]*", MODE="0666"
+KERNEL=="ttyACM[0-9]*", MODE="0666"
+EOF
+
+# 重载规则
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+> **提示**: 若不确定设备的 Vendor/Product ID，可运行 `lsusb` 查看，或拔插设备后 `dmesg | tail` 查看内核日志。
+
 ### 源码构建
 
 #### Linux
