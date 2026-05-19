@@ -54,6 +54,4 @@ jobs:
             ```
           files: |
             release/emberinter_*.deb
-            build/bin/serial-monitor
-            build/bin/serial-monitor-cli
           generate_release_notes: true
