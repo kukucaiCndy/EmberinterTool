@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake g++ \
+            qtbase5-dev libqt5serialport5-dev \
+            rapidjson-dev libspdlog-dev libfmt-dev
+
+      - name: Configure
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Build deb Package
+        run: bash deb_pack/build_deb.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: EmberInterDebugTool ${{ github.ref_name }}
+          body: |
+            ## EmberInter 尘智串口调试工具 ${{ github.ref_name }}
+
+            ### 安装
+            ```bash
+            sudo dpkg -i emberinter_*.deb
+            sudo apt-get install -f
+            ```
+
+            ### 使用
+            ```bash
+            serial-monitor           # GUI 图形界面
+            emberinter-cli --help    # CLI 命令行工具
+            ```
+          files: |
+            release/emberinter_*.deb
+            build/bin/serial-monitor
+            build/bin/serial-monitor-cli
+          generate_release_notes: true
