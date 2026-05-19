@@ -20,30 +20,82 @@
 
 ### 编译依赖
 
-- CMake >= 3.16
-- Qt5 (Widgets, SerialPort, Network)
-- MinGW64 / MSVC (Windows) 或 GCC/Clang (Linux/macOS)
-- spdlog (日志库)
-- RapidJSON (JSON 解析)
+| 依赖 | 用途 |
+|------|------|
+| CMake >= 3.16 | 构建系统 |
+| Qt5 (Widgets, SerialPort, Network) | GUI、串口、IPC 通信 |
+| spdlog | 日志库 |
+| RapidJSON | JSON 解析 |
+| fmt | 格式化库 |
+| GCC >= 12 / Clang / MSVC | C++17 编译器 |
 
 ### 运行环境
 
-- Windows 7+ / Linux / macOS
-- 可用串口设备
+- Windows 7+ / Linux (Debian/Ubuntu/Deepin) / macOS
+- 可用串口设备（CP210x、FTDI、CH340、JLink CDC 等）
 
 ## 快速开始
 
-### 构建
+### Linux 安装（Debian/Ubuntu/Deepin）
+
+直接安装预编译的 deb 包：
 
 ```bash
+# 安装
+sudo dpkg -i emberinter_1.2.0_amd64.deb
+sudo apt-get install -f   # 自动补全依赖
+
+# 启动 GUI
+serial-monitor
+
+# 或从应用菜单搜索 "EmberInter" / "尘智串口调试工具"
+
+# CLI 模式
+emberinter-cli --list
+```
+
+卸载：
+```bash
+sudo dpkg -r emberinter
+```
+
+### 源码构建
+
+#### Linux
+
+```bash
+# 安装编译依赖（Debian/Ubuntu/Deepin）
+sudo apt-get install -y \
+    cmake g++ \
+    qtbase5-dev libqt5serialport5-dev \
+    rapidjson-dev libspdlog-dev libfmt-dev
+
 # 克隆仓库
 git clone https://github.com/kukucaiCndy/serial-monitor.git
 cd serial-monitor
 
 # 配置与构建
 mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . -j$(nproc)
+
+# 输出文件
+# build/bin/serial-monitor         (GUI)
+# build/bin/serial-monitor-cli     (CLI)
+```
+
+#### Windows (MSYS2 MinGW64)
+
+```bash
+# 安装编译依赖
+pacman -S mingw-w64-x86_64-cmake mingw-w64-x86_64-gcc
+pacman -S mingw-w64-x86_64-qt5 mingw-w64-x86_64-rapidjson
+pacman -S mingw-w64-x86_64-spdlog mingw-w64-x86_64-fmt
+
+# 配置与构建
+mkdir build && cd build
 cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
-cmake --build . -j4
+cmake --build . -j8
 
 # 输出文件
 # build/bin/serial-monitor.exe     (GUI)
@@ -54,7 +106,8 @@ cmake --build . -j4
 
 1. **启动 GUI**
    ```bash
-   ./serial-monitor.exe
+   ./serial-monitor        # Linux
+   ./serial-monitor.exe    # Windows
    ```
    在界面左侧点击 `[+]` 添加串口会话，配置端口、波特率等参数。
    右键会话 → 连接，即可开始监控。
@@ -67,7 +120,7 @@ cmake --build . -j4
    # 列出可用串口
    ./serial-monitor-cli --list
 
-   # 连接串口
+   # 连接串口（Linux 端口如 /dev/ttyUSB0）
    ./serial-monitor-cli --connect COM3 --baudrate 115200
 
    # 监听日志
@@ -219,7 +272,7 @@ quit / q / exit          退出 CLI（GUI 继续运行）
 ```
 $ ./serial-monitor-cli -p COM3 --cli
 ============================================================
-  EmberInterDebugTool v1.0.0 - 尘智 | 微尘藏星火,终端蕴尘智
+  EmberInterDebugTool v1.2.0 - 尘智 | 微尘藏星火,终端蕴尘智
   Port: COM3
 ============================================================
 
@@ -304,6 +357,26 @@ serial-monitor/
 ├── deploy/                 # 部署/打包脚本
 └── CMakeLists.txt
 ```
+
+## 打包发布
+
+### deb 包（Linux）
+
+```bash
+# 1. 编译项目
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . -j$(nproc)
+
+# 2. 打包为 .deb
+cd ..
+bash deb_pack/build_deb.sh
+# 输出: release/emberinter_1.2.0_amd64.deb
+```
+
+### Windows 安装包
+
+详见 [deploy/deploy.sh](deploy/deploy.sh) 和 [deploy/emberInter.iss](deploy/emberInter.iss)，使用 Inno Setup 生成安装程序。
 
 ## 许可证
 
