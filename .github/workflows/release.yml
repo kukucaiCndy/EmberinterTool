@@ -55,18 +55,18 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-qt5-base
-            mingw-w64-x86_64-qt5-serialport
             mingw-w64-x86_64-rapidjson
             mingw-w64-x86_64-spdlog
             mingw-w64-x86_64-fmt
 
       - name: Configure
         run: |
-          mkdir build && cd build
-          cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+          mkdir -p build && cd build
+          cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH=/mingw64
 
       - name: Build
-        run: cmake --build build --parallel $(nproc)
+        run: cmake --build build --parallel 4
 
       - name: Collect Qt DLLs
         run: |
