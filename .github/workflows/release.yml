@@ -54,20 +54,10 @@ jobs:
           install: >-
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-qt5-base
-            mingw-w64-x86_64-qtserialport
+            mingw-w64-x86_64-qt5
             mingw-w64-x86_64-rapidjson
             mingw-w64-x86_64-spdlog
             mingw-w64-x86_64-fmt
-
-      - name: Verify Qt5
-        run: |
-          echo "=== Qt5 cmake modules ==="
-          ls /mingw64/lib/cmake/Qt5* 2>/dev/null || echo "not found"
-          echo "=== rapidjson ==="
-          ls /mingw64/include/rapidjson/rapidjson.h 2>/dev/null || echo "not found"
-          echo "=== spdlog ==="
-          ls /mingw64/include/spdlog/spdlog.h 2>/dev/null || echo "not found"
 
       - name: Configure
         run: |
