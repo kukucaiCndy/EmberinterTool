@@ -16,7 +16,19 @@ cmake --build . -j$(nproc)
 # Windows (MSYS2 MINGW64) — must use MinGW Makefiles; ensure mingw-w64-x86_64-make is installed
 cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/mingw64
 mingw32-make -j$(nproc)
+
+# macOS — homebrew qt@5
+cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt@5)"
+cmake --build . -j$(sysctl -n hw.logicalcpu)
 ```
+
+## Packaging
+
+```bash
+bash deb_pack/build_deb.sh    # Debian/Ubuntu .deb
+bash rpm_pack/build_rpm.sh    # RHEL/Fedora/CentOS .rpm (needs rpm package)
+```
+Output appears in `release/`.
 
 Lint/typecheck: there is no standalone lint step. Rely on compile warnings. CMake sets `CMAKE_CXX_STANDARD 17` with `-Wall -Wextra` convention (per `.trae/rules/project.md`).
 
@@ -44,12 +56,14 @@ src/cli/         → serial-monitor-cli executable (IPC client)
 
 ## After changing version
 
-Update version in all three places:
+Update version in these places:
 1. `CMakeLists.txt:2` — `project(... VERSION x.y.z)`
 2. `deploy/emberInter.iss:6` — `#define MyAppVersion "x.y.z"`
-3. `git tag vx.y.z`
+3. `deb_pack/build_deb.sh:9` — `VERSION="x.y.z"`
+4. `rpm_pack/build_rpm.sh:9` — `VERSION="x.y.z"`
+5. `git tag vx.y.z`
 
-Also regenerate the deb: `bash deb_pack/build_deb.sh` (requires build artifacts in `build/bin/`).
+Also regenerate packages: `bash deb_pack/build_deb.sh && bash rpm_pack/build_rpm.sh`
 
 ## Code conventions
 
@@ -72,5 +86,6 @@ Also regenerate the deb: `bash deb_pack/build_deb.sh` (requires build artifacts 
 - `docs/IPC通信协议文档.md` — IPC message protocol specification
 - `docs/CLI接口规范文档.md` — CLI interface specification
 - `docs/项目架构与模块设计文档.md` — architecture and module design
+- `docs/PRD.md` — product requirements document
+- `docs/project.md` — build/packaging/release instructions
 - `.trae/rules/project.md` — project rules and planned architecture
-- `project.md` — build/packaging/release instructions

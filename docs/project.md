@@ -116,7 +116,33 @@ cd deploy
 | 压缩 | LZMA 固实压缩 |
 | 输出 | `release/emberInter-Setup-1.0.0.exe` (~30MB) |
 
-### 3. 发布到 GitHub
+### 3. Linux 打包 (deb / rpm)
+
+编译完成后生成 Linux 系统包：
+
+```bash
+# Debian/Ubuntu .deb 包
+bash deb_pack/build_deb.sh
+
+# RHEL/Fedora/CentOS .rpm 包（需安装 rpm 包）
+bash rpm_pack/build_rpm.sh
+```
+
+产物输出到 `release/`:
+| 文件 | 目标系统 |
+|------|----------|
+| `emberinter_1.2.0_amd64.deb` | Debian / Ubuntu / Deepin |
+| `emberinter-1.2.0-1.x86_64.rpm` | RHEL / Fedora / CentOS |
+
+安装:
+```bash
+# deb
+sudo dpkg -i emberinter_*.deb && sudo apt-get install -f
+# rpm
+sudo rpm -i emberinter-*.rpm
+```
+
+### 4. 发布到 GitHub
 
 #### 方式一：GitHub CLI (gh)
 
@@ -197,6 +223,8 @@ export https_proxy=http://127.0.0.1:7890
 |------|------|------|
 | [CMakeLists.txt](CMakeLists.txt) | `project(... VERSION x.y.z)` | 第 2 行 |
 | [deploy/emberInter.iss](deploy/emberInter.iss) | `#define MyAppVersion "x.y.z"` | 第 6 行 |
+| [deb_pack/build_deb.sh](deb_pack/build_deb.sh) | `VERSION="x.y.z"` | 第 9 行 |
+| [rpm_pack/build_rpm.sh](rpm_pack/build_rpm.sh) | `VERSION="x.y.z"` | 第 9 行 |
 | `git tag` | `vx.y.z` | 发布标签 |
 
 ## 相关文件索引
@@ -206,6 +234,8 @@ export https_proxy=http://127.0.0.1:7890
 | [CMakeLists.txt](CMakeLists.txt) | 顶层构建配置 |
 | [deploy/deploy.sh](deploy/deploy.sh) | 递归收集 DLL 依赖并生成部署目录 |
 | [deploy/emberInter.iss](deploy/emberInter.iss) | Inno Setup 安装脚本 |
+| [deb_pack/build_deb.sh](deb_pack/build_deb.sh) | Debian/Ubuntu .deb 打包脚本 |
+| [rpm_pack/build_rpm.sh](rpm_pack/build_rpm.sh) | RHEL/Fedora .rpm 打包脚本 |
 | [resources/styles/dark_theme.qss](resources/styles/dark_theme.qss) | 暗色主题样式 |
 | [resources/icons/logo.png](resources/icons/logo.png) | 应用图标 |
 | [PRD.md](PRD.md) | 产品需求文档 |

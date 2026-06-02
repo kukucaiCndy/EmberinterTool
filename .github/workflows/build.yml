@@ -10,9 +10,8 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,7 +22,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             cmake g++ \
             qtbase5-dev libqt5serialport5-dev \
-            rapidjson-dev libspdlog-dev libfmt-dev
+            rapidjson-dev libspdlog-dev libfmt-dev \
+            rpm
 
       - name: Configure
         run: |
@@ -35,6 +35,9 @@ jobs:
 
       - name: Build deb Package
         run: bash deb_pack/build_deb.sh
+
+      - name: Build RPM Package
+        run: bash rpm_pack/build_rpm.sh
 
       - name: Upload Binaries
         uses: actions/upload-artifact@v4
@@ -49,3 +52,88 @@ jobs:
         with:
           name: emberinter-deb
           path: release/emberinter_*.deb
+
+      - name: Upload RPM Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: emberinter-rpm
+          path: release/emberinter-*.rpm
+
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-qt5
+            mingw-w64-x86_64-rapidjson
+            mingw-w64-x86_64-spdlog
+            mingw-w64-x86_64-fmt
+
+      - name: Configure
+        run: |
+          mkdir -p build && cd build
+          cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_MAKE_PROGRAM=mingw32-make \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_PREFIX_PATH=/mingw64
+
+      - name: Build
+        run: cmake --build build --parallel 4
+
+      - name: Collect Qt DLLs
+        run: |
+          mkdir -p dist-win
+          cp build/bin/serial-monitor.exe dist-win/
+          cp build/bin/serial-monitor-cli.exe dist-win/
+          windeployqt dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: emberinter-windows
+          path: dist-win/
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          brew install cmake qt@5 rapidjson spdlog fmt
+
+      - name: Configure
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@5)"
+
+      - name: Build
+        run: cmake --build build --parallel $(sysctl -n hw.logicalcpu)
+
+      - name: Package macOS Artifacts
+        run: |
+          mkdir -p dist-macos
+          cp build/bin/serial-monitor dist-macos/
+          cp build/bin/serial-monitor-cli dist-macos/
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: emberinter-macos
+          path: dist-macos/

@@ -18,7 +18,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             cmake g++ \
             qtbase5-dev libqt5serialport5-dev \
-            rapidjson-dev libspdlog-dev libfmt-dev
+            rapidjson-dev libspdlog-dev libfmt-dev \
+            rpm
 
       - name: Configure
         run: |
@@ -31,11 +32,20 @@ jobs:
       - name: Build deb Package
         run: bash deb_pack/build_deb.sh
 
+      - name: Build RPM Package
+        run: bash rpm_pack/build_rpm.sh
+
       - name: Upload deb
         uses: actions/upload-artifact@v4
         with:
           name: emberinter-linux-deb
           path: release/emberinter_*.deb
+
+      - name: Upload RPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: emberinter-linux-rpm
+          path: release/emberinter-*.rpm
 
   build-windows:
     runs-on: windows-latest
@@ -122,10 +132,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download Linux Artifacts
+      - name: Download Linux DEB
         uses: actions/download-artifact@v4
         with:
           name: emberinter-linux-deb
+          path: artifacts/linux
+
+      - name: Download Linux RPM
+        uses: actions/download-artifact@v4
+        with:
+          name: emberinter-linux-rpm
           path: artifacts/linux
 
       - name: Download Windows Artifacts
@@ -164,13 +180,18 @@ jobs:
             | 平台 | 文件 |
             |------|------|
             | 🐧 Linux (deb) | `emberinter_*.deb` |
+            | 🐧 Linux (rpm) | `emberinter-*.rpm` |
             | 🪟 Windows | `emberinter-windows.zip` |
             | 🍎 macOS | `emberinter-macos.tar.gz` |
 
             ### Linux 安装
             ```bash
+            # Debian/Ubuntu
             sudo dpkg -i emberinter_*.deb
             sudo apt-get install -f
+
+            # RHEL/Fedora/CentOS
+            sudo rpm -i emberinter-*.rpm
             ```
 
             ### 使用
@@ -180,6 +201,7 @@ jobs:
             ```
           files: |
             artifacts/linux/emberinter_*.deb
+            artifacts/linux/emberinter-*.rpm
             emberinter-windows.zip
             emberinter-macos.tar.gz
           generate_release_notes: true
