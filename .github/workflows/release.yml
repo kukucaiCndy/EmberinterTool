@@ -54,6 +54,7 @@ jobs:
           install: >-
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
             mingw-w64-x86_64-qt5
             mingw-w64-x86_64-rapidjson
             mingw-w64-x86_64-spdlog
@@ -63,6 +64,9 @@ jobs:
         run: |
           mkdir -p build && cd build
           cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_MAKE_PROGRAM=mingw32-make \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
             -DCMAKE_PREFIX_PATH=/mingw64
 
       - name: Build

@@ -17,6 +17,8 @@
 
 | 依赖 | 用途 | 安装方式 |
 |------|------|----------|
+| CMake | 构建系统 | MSYS2: `pacman -S mingw-w64-x86_64-cmake` |
+| GCC + Make | C++17 编译 | MSYS2: `pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-make` |
 | Qt5 (Widgets/Gui/SerialPort/Network) | GUI、串口、IPC | MSYS2: `pacman -S mingw-w64-x86_64-qt5` |
 | rapidjson | JSON 解析 | MSYS2: `pacman -S mingw-w64-x86_64-rapidjson` |
 | spdlog | 日志库 | MSYS2: `pacman -S mingw-w64-x86_64-spdlog` |
