@@ -23,7 +23,7 @@ jobs:
             cmake g++ \
             qtbase5-dev libqt5serialport5-dev \
             rapidjson-dev libspdlog-dev libfmt-dev \
-            rpm
+            rpm alien
 
       - name: Configure
         run: |
@@ -36,8 +36,14 @@ jobs:
       - name: Build deb Package
         run: bash deb_pack/build_deb.sh
 
-      - name: Build RPM Package
-        run: bash rpm_pack/build_rpm.sh
+      - name: Build RPM Package (from deb)
+        run: |
+          DEB_FILE=$(ls release/emberinter_*.deb | head -1)
+          if [ -f "$DEB_FILE" ]; then
+            sudo alien -r --rpm "$DEB_FILE" -g -k
+            mv emberinter-*.rpm release/
+            echo "RPM package built from deb"
+          fi
 
       - name: Upload Binaries
         uses: actions/upload-artifact@v4
@@ -99,7 +105,7 @@ jobs:
           mkdir -p dist-win
           cp build/bin/serial-monitor.exe dist-win/
           cp build/bin/serial-monitor-cli.exe dist-win/
-          windeployqt dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
+          /mingw64/bin/windeployqt dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
