@@ -84,7 +84,7 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-make
             mingw-w64-x86_64-qt5
-            mingw-w64-x86_64-qt5-static
+            mingw-w64-x86_64-qt5-tools
             mingw-w64-x86_64-rapidjson
             mingw-w64-x86_64-spdlog
             mingw-w64-x86_64-fmt
