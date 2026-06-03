@@ -72,6 +72,7 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-make
             mingw-w64-x86_64-qt5
+            mingw-w64-x86_64-qt5-static
             mingw-w64-x86_64-rapidjson
             mingw-w64-x86_64-spdlog
             mingw-w64-x86_64-fmt
@@ -93,7 +94,7 @@ jobs:
           mkdir -p dist-win
           cp build/bin/serial-monitor.exe dist-win/
           cp build/bin/serial-monitor-cli.exe dist-win/
-          /mingw64/bin/windeployqt dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
+          C:/msys64/mingw64/bin/windeployqt.exe dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
