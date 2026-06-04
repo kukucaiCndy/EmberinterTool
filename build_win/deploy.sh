@@ -4,7 +4,7 @@ set -e
 
 PROJECT_DIR="/f/work/software/serial-monitor"
 BUILD_DIR="$PROJECT_DIR/build"
-DEPLOY_DIR="$PROJECT_DIR/deploy/emberInter"
+DEPLOY_DIR="$PROJECT_DIR/build_win/emberInter"
 DIST_DIR="$PROJECT_DIR/release"
 
 MINGW_DIR="/mingw64"

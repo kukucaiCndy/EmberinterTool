@@ -30,7 +30,7 @@ jobs:
         run: cmake --build . --parallel $(nproc)
 
       - name: Build deb Package
-        run: bash deb_pack/build_deb.sh
+        run: bash build_deb/build_deb.sh
 
       - name: Build RPM Package (from deb)
         run: |

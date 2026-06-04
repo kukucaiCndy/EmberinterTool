@@ -1,5 +1,5 @@
 ; EmberInterDebugTool 尘智串口调试工具 - Inno Setup 安装脚本
-; 用法: ISCC emberInter.iss (在 deploy 目录下执行)
+; 用法: ISCC emberInter.iss (在 build_win 目录下执行)
 
 #define MyAppName "EmberInterDebugTool"
 #define MyAppCnName "尘智串口调试工具"
