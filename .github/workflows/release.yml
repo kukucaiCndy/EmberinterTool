@@ -27,7 +27,7 @@ jobs:
           cmake .. -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build --parallel $(nproc)
+        run: cmake --build . --parallel $(nproc)
 
       - name: Build deb Package
         run: bash deb_pack/build_deb.sh
@@ -87,7 +87,7 @@ jobs:
             -DCMAKE_PREFIX_PATH=/mingw64
 
       - name: Build
-        run: cmake --build build --parallel 4
+        run: cmake --build . --parallel 4
 
       - name: Collect Qt DLLs
         run: |
@@ -115,11 +115,13 @@ jobs:
       - name: Configure
         run: |
           mkdir build && cd build
+          export CMAKE_PREFIX_PATH="$(brew --prefix qt@5)"
+          export PATH="$(brew --prefix qt@5)/bin:$PATH"
           cmake .. -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@5)"
+            -DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH"
 
       - name: Build
-        run: cmake --build build --parallel $(sysctl -n hw.logicalcpu)
+        run: cmake --build . --parallel $(sysctl -n hw.logicalcpu)
 
       - name: Package macOS Artifacts
         run: |
