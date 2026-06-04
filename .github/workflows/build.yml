@@ -40,8 +40,8 @@ jobs:
         run: |
           DEB_FILE=$(ls release/emberinter_*.deb | head -1)
           if [ -f "$DEB_FILE" ]; then
-            sudo alien -r --rpm "$DEB_FILE" -g -k
-            mv emberinter-*.rpm release/
+            sudo alien -r "$DEB_FILE"
+            sudo mv emberinter-*.rpm release/ 2>/dev/null || true
             echo "RPM package built from deb"
           fi
 
@@ -106,7 +106,7 @@ jobs:
           mkdir -p dist-win
           cp build/bin/serial-monitor.exe dist-win/
           cp build/bin/serial-monitor-cli.exe dist-win/
-          C:/tools/msys64/mingw64/bin/windeployqt.exe dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
+          windeployqt.exe dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4

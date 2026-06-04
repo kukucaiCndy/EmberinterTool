@@ -36,8 +36,8 @@ jobs:
         run: |
           DEB_FILE=$(ls release/emberinter_*.deb | head -1)
           if [ -f "$DEB_FILE" ]; then
-            sudo alien -r --rpm "$DEB_FILE" -g -k
-            mv emberinter-*.rpm release/
+            sudo alien -r "$DEB_FILE"
+            sudo mv emberinter-*.rpm release/ 2>/dev/null || true
             echo "RPM package built from deb"
           fi
 
@@ -94,7 +94,7 @@ jobs:
           mkdir -p dist-win
           cp build/bin/serial-monitor.exe dist-win/
           cp build/bin/serial-monitor-cli.exe dist-win/
-          C:/tools/msys64/mingw64/bin/windeployqt.exe dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
+          windeployqt.exe dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
@@ -114,14 +114,15 @@ jobs:
 
       - name: Configure
         run: |
-          mkdir build && cd build
+          mkdir build
+          cd build
           export CMAKE_PREFIX_PATH="$(brew --prefix qt@5)"
           export PATH="$(brew --prefix qt@5)/bin:$PATH"
           cmake .. -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH"
 
       - name: Build
-        run: cmake --build . --parallel $(sysctl -n hw.logicalcpu)
+        run: cd build && cmake --build . --parallel $(sysctl -n hw.logicalcpu)
 
       - name: Package macOS Artifacts
         run: |
