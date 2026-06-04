@@ -106,7 +106,7 @@ jobs:
           mkdir -p dist-win
           cp build/bin/serial-monitor.exe dist-win/
           cp build/bin/serial-monitor-cli.exe dist-win/
-          windeployqt.exe dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
+          /mingw64/bin/windeployqt.exe dist-win/serial-monitor.exe --no-translations --no-compiler-runtime
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
