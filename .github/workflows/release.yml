@@ -23,11 +23,11 @@ jobs:
 
       - name: Configure
         run: |
-          mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
+          mkdir build
+          cd build && cmake .. -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build . --parallel $(nproc)
+        run: cd build && cmake --build . --parallel $(nproc)
 
       - name: Build deb Package
         run: bash build_deb/build_deb.sh
