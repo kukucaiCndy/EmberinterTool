@@ -79,15 +79,15 @@ jobs:
 
       - name: Configure
         run: |
-          mkdir -p build && cd build
-          cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release \
+          mkdir -p build
+          cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_MAKE_PROGRAM=mingw32-make \
             -DCMAKE_C_COMPILER=gcc \
             -DCMAKE_CXX_COMPILER=g++ \
             -DCMAKE_PREFIX_PATH=/mingw64
 
       - name: Build
-        run: cmake --build . --parallel 4
+        run: cmake --build build --parallel 4
 
       - name: Collect Qt DLLs
         run: |
