@@ -8,6 +8,7 @@
 #include <QVector>
 #include "log_buffer.h"
 #include "serial_engine.h"
+#include "tab_type.h"
 
 class IPCServer : public QObject {
     Q_OBJECT
@@ -17,7 +18,8 @@ public:
 
     bool start(const QString& name = "serial_monitor_ipc");
     void stop();
-    void broadcastLog(const LogEntry& entry);
+    void broadcastLog(const LogEntry& entry,
+                   TabType tabType = TabType::Serial);
     void broadcastStatus(const QString& port, bool connected,
                          const SerialConfig& config, qint64 rxBytes,
                          qint64 txBytes, qint64 uptimeSeconds);

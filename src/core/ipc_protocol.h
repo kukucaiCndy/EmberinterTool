@@ -8,6 +8,7 @@
 #include <QByteArray>
 #include "log_buffer.h"
 #include "serial_engine.h"
+#include "tab_type.h"
 
 class IpcProtocol {
 public:
@@ -21,12 +22,14 @@ public:
 
     static QJsonObject parseMessage(const QByteArray& data);
 
-    static QJsonObject buildLogEntryMessage(const LogEntry& entry);
+    static QJsonObject buildLogEntryMessage(const LogEntry& entry,
+                                          TabType tabType = TabType::Serial);
 
     static QJsonObject buildStatusMessage(const QString& port, bool connected,
                                           const SerialConfig& config,
                                           qint64 rxBytes, qint64 txBytes,
-                                          qint64 uptimeSeconds);
+                                          qint64 uptimeSeconds,
+                                          TabType tabType = TabType::Serial);
 
     static QJsonObject buildPortInfo(const QString& name, const QString& description,
                                      const QString& vid, const QString& pid,

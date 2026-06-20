@@ -22,8 +22,8 @@ target_include_directories(serial-monitor-cli PRIVATE
 
 target_link_libraries(serial-monitor-cli PRIVATE
     serialmonitor_core
-    Qt5::Core
-    Qt5::Network
+    Qt6::Core
+    Qt6::Network
 )
 
 set_target_properties(serial-monitor-cli PROPERTIES

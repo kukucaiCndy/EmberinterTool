@@ -74,7 +74,7 @@ copy_dll_recursive "$BUILD_DIR/bin/serial-monitor.exe"
 copy_dll_recursive "$BUILD_DIR/bin/serial-monitor-cli.exe"
 
 echo "=== 复制 Qt 平台插件 ==="
-cp "$MINGW_DIR/share/qt5/plugins/platforms/qwindows.dll" "$DEPLOY_DIR/platforms/"
+cp "$MINGW_DIR/share/qt6/plugins/platforms/qwindows.dll" "$DEPLOY_DIR/platforms/"
 
 echo "=== 复制资源文件 ==="
 cp "$PROJECT_DIR/resources/styles/dark_theme.qss" "$DEPLOY_DIR/styles/"

@@ -9,7 +9,8 @@ set(CMAKE_AUTOUIC ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-find_package(Qt5 REQUIRED COMPONENTS Widgets Gui SerialPort Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets SerialPort Network Quick QuickControls2)
+message(STATUS "Using Qt6: ${Qt6_VERSION}")
 
 include(FindRapidJSON)
 

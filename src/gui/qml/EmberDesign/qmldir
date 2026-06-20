@@ -1,0 +1,2 @@
+module EmberDesign
+singleton DesignSystem 1.0 DesignSystem.qml

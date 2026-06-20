@@ -50,10 +50,10 @@ void IPCServer::stop()
     spdlog::info("IPC server stopped");
 }
 
-void IPCServer::broadcastLog(const LogEntry& entry)
+void IPCServer::broadcastLog(const LogEntry& entry, TabType tabType)
 {
     QByteArray message = IpcProtocol::buildMessage(
-        "log_entry", IpcProtocol::buildLogEntryMessage(entry));
+        "log_entry", IpcProtocol::buildLogEntryMessage(entry, tabType));
 
     for (auto* client : clients_) {
         if (client && client->isOpen()) {

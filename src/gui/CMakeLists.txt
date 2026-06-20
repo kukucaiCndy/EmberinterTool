@@ -1,48 +1,54 @@
 set(GUI_SOURCES
     main.cpp
-    main_window.cpp
-    serial_tab_widget.cpp
-    log_view.cpp
-    send_panel.cpp
-    status_bar.cpp
-    settings_dialog.cpp
     ipc_server.cpp
-    serial_port_dialog.cpp
+    qml/app_core.cpp
+    qml/serial_tab_page.cpp
+    qml/terminal_tab_page.cpp
+    qml/debug_page.cpp
+    qml/terminal/terminal_model.cpp
+    qml/terminal/terminal_renderer.cpp
+    qml/terminal/terminal_view.cpp
+    qml/terminal/glyph_atlas.cpp
 )
 
 set(GUI_HEADERS
-    main_window.h
-    serial_tab_widget.h
-    log_view.h
-    send_panel.h
-    status_bar.h
-    settings_dialog.h
     ipc_server.h
-    serial_port_dialog.h
+    qml/tab_page.h
+    qml/app_core.h
+    qml/serial_tab_page.h
+    qml/terminal_tab_page.h
+    qml/debug_page.h
+    qml/terminal/terminal_model.h
+    qml/terminal/terminal_renderer.h
+    qml/terminal/terminal_view.h
+    qml/terminal/glyph_atlas.h
 )
 
 add_executable(serial-monitor
     ${GUI_SOURCES}
     ${GUI_HEADERS}
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
-    ${CMAKE_SOURCE_DIR}/resources/icons/app.rc
 )
 
 target_include_directories(serial-monitor PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core
+    ${CMAKE_SOURCE_DIR}/src/core/terminal
+    ${CMAKE_CURRENT_SOURCE_DIR}/qml
+    ${CMAKE_CURRENT_SOURCE_DIR}/qml/terminal
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${SPDLOG_INCLUDE_DIR}
 )
 
 target_link_libraries(serial-monitor PRIVATE
     serialmonitor_core
-    Qt5::Widgets
-    Qt5::SerialPort
-    Qt5::Network
+    Qt6::Core
+    Qt6::Quick
+    Qt6::QuickControls2
+    Qt6::Widgets
+    Qt6::SerialPort
+    Qt6::Network
+    Qt6::OpenGL
 )
-
-if(WIN32)
-    target_link_libraries(serial-monitor PRIVATE dwmapi)
-endif()
 
 set_target_properties(serial-monitor PROPERTIES
     WIN32_EXECUTABLE TRUE

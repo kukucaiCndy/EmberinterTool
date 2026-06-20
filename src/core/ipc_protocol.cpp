@@ -30,10 +30,11 @@ QJsonObject IpcProtocol::parseMessage(const QByteArray& data)
     return doc.object();
 }
 
-QJsonObject IpcProtocol::buildLogEntryMessage(const LogEntry& entry)
+QJsonObject IpcProtocol::buildLogEntryMessage(const LogEntry& entry, TabType tabType)
 {
     QJsonObject payload;
     payload["port"] = entry.portName;
+    payload["tab_type"] = tabTypeToString(tabType);
     payload["timestamp"] = entry.timestamp;
     payload["level"] = entry.level;
     payload["text"] = entry.text;
@@ -44,7 +45,7 @@ QJsonObject IpcProtocol::buildLogEntryMessage(const LogEntry& entry)
 QJsonObject IpcProtocol::buildStatusMessage(const QString& port, bool connected,
                                             const SerialConfig& config,
                                             qint64 rxBytes, qint64 txBytes,
-                                            qint64 uptimeSeconds)
+                                            qint64 uptimeSeconds, TabType tabType)
 {
     QJsonObject stats;
     stats["bytes_received"] = rxBytes;
@@ -53,6 +54,7 @@ QJsonObject IpcProtocol::buildStatusMessage(const QString& port, bool connected,
 
     QJsonObject payload;
     payload["port"] = port;
+    payload["tab_type"] = tabTypeToString(tabType);
     payload["connected"] = connected;
     payload["baudrate"] = config.baudrate;
     payload["stats"] = stats;

@@ -90,8 +90,10 @@ bool ConfigManager::load(const QString& path)
     for (const auto& val : tabsArr) {
         QJsonObject tab = val.toObject();
         TabConfig tc;
+        tc.type = tabTypeFromString(tab["type"].toString("serial"));
         tc.port = tab["port"].toString();
         tc.name = tab["name"].toString();
+        tc.extra = tab["extra"].toObject();
         config_.tabs.append(tc);
     }
 
@@ -99,6 +101,7 @@ bool ConfigManager::load(const QString& path)
     for (const auto& val : savedArr) {
         QJsonObject sp = val.toObject();
         SavedPort saved;
+        saved.type = tabTypeFromString(sp["type"].toString("serial"));
         saved.name = sp["name"].toString();
         saved.port = sp["port"].toString();
         saved.baudrate = sp["baudrate"].toInt(115200);
@@ -110,6 +113,7 @@ bool ConfigManager::load(const QString& path)
         else if (p == "S") saved.parity = QSerialPort::SpaceParity;
         else saved.parity = QSerialPort::NoParity;
         saved.stopbits = static_cast<QSerialPort::StopBits>(sp["stopbits"].toInt(1));
+        saved.extra = sp["extra"].toObject();
         config_.savedPorts.append(saved);
     }
 
@@ -156,8 +160,12 @@ bool ConfigManager::save(const QString& path)
     QJsonArray tabsArr;
     for (const auto& t : config_.tabs) {
         QJsonObject tab;
+        tab["type"] = tabTypeToString(t.type);
         tab["port"] = t.port;
         tab["name"] = t.name;
+        if (!t.extra.isEmpty()) {
+            tab["extra"] = t.extra;
+        }
         tabsArr.append(tab);
     }
     gui["tabs"] = tabsArr;
@@ -178,6 +186,7 @@ bool ConfigManager::save(const QString& path)
     QJsonArray savedArr;
     for (const auto& s : config_.savedPorts) {
         QJsonObject sp;
+        sp["type"] = tabTypeToString(s.type);
         sp["name"] = s.name;
         sp["port"] = s.port;
         sp["baudrate"] = s.baudrate;
@@ -190,6 +199,9 @@ bool ConfigManager::save(const QString& path)
             default: sp["parity"] = "N"; break;
         }
         sp["stopbits"] = static_cast<int>(s.stopbits);
+        if (!s.extra.isEmpty()) {
+            sp["extra"] = s.extra;
+        }
         savedArr.append(sp);
     }
     root["saved_ports"] = savedArr;

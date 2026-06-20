@@ -4,19 +4,37 @@
 #include <QString>
 #include <QStringList>
 #include <QVector>
+#include <QJsonObject>
 #include <QSerialPort>
 #include "serial_engine.h"
+#include "tab_type.h"
 
 struct SavedPort {
+    TabType type = TabType::Serial;
     QString name;
     QString port;
     int baudrate = 115200;
     QSerialPort::DataBits databits = QSerialPort::Data8;
     QSerialPort::Parity parity = QSerialPort::NoParity;
     QSerialPort::StopBits stopbits = QSerialPort::OneStop;
+    QJsonObject extra;
 
     QString summary() const {
-        return port.isEmpty() ? name : QString("%1 - %2").arg(port, name);
+        switch (type) {
+        case TabType::CMD:
+            return QString("[终端] %1").arg(
+                name.isEmpty() ? extra["shell"].toString("bash.exe") : name);
+        case TabType::SSH: {
+            QString host = extra["host"].toString();
+            int p = extra["port"].toInt(22);
+            QString user = extra["user"].toString();
+            QString label = user.isEmpty() ? host : QString("%1@%2").arg(user, host);
+            if (p != 22) label += QString(":%1").arg(p);
+            return QString("[SSH] %1").arg(name.isEmpty() ? label : name);
+        }
+        default:
+            return port.isEmpty() ? name : QString("%1 - %2").arg(port, name);
+        }
     }
 
     SerialConfig toSerialConfig() const {
@@ -31,8 +49,10 @@ struct SavedPort {
 };
 
 struct TabConfig {
+    TabType type = TabType::Serial;
     QString port;
     QString name;
+    QJsonObject extra;
 };
 
 struct DisplayConfig {

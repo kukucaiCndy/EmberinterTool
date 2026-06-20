@@ -137,6 +137,7 @@ CLI 通过 IPC 与 GUI 通信，**使用前请先启动 GUI 程序**。
 | `--connect PORT` | 连接指定串口 |
 | `--baudrate RATE` | 配合 `--connect` 使用，设置波特率（默认: 115200） |
 | `--send DATA` | 发送文本数据（自动追加 CRLF），完成后退出 |
+| `--send-file FILE` | 发送二进制文件（Base64 编码传输），完成后退出 |
 | `--list` | 列出可用串口设备 |
 | `--get-status` | 显示当前连接状态 |
 | `--get-logs N` | 获取最近 N 条日志 |
@@ -165,6 +166,9 @@ CLI 通过 IPC 与 GUI 通信，**使用前请先启动 GUI 程序**。
 
 # 发送 AT 命令并观察回复
 ./serial-monitor-cli --send "AT+GMR" -p COM3
+
+# 发送二进制固件文件
+./serial-monitor-cli --send-file firmware.bin -p COM3
 
 # 获取最近 50 条日志
 ./serial-monitor-cli --get-logs 50
@@ -195,6 +199,7 @@ list                     列出可用串口
 ```
 send <data>              发送文本数据（自动追加 CRLF）
 sendhex <hex>            发送 HEX 数据
+sendfile <file>          发送二进制文件
 ```
 
 **日志操作:**

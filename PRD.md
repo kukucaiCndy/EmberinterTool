@@ -1,10 +1,11 @@
-# EmberIntel Serial Monitor v2.0
+# EmberInterDebugTool (尘智) v3.0
 
 ## 产品需求文档 (PRD)
 
-> 版本: v2.0  
-> 日期: 2026-05-17  
+> 版本: v3.0  
+> 日期: 2026-06-10  
 > 状态: 需求确认  
+> 受众: 产品 + 研发  
 
 ---
 
@@ -12,364 +13,260 @@
 
 ### 1.1 产品定位
 
-EmberIntel Serial Monitor 是一款面向嵌入式开发者的**人机协同串口调试工具**，同时支持：
-- **CLI 模式**：供 AI Agent / 自动化脚本使用，纯命令行操作
-- **GUI 模式**：供开发者日常使用，提供可视化界面
+**尘智 (EmberInterDebugTool)** 是一款面向嵌入式开发的 **人机协同 Agent 工作台**。
+
+与传统的"串口调试助手"不同，尘智的核心价值不在于功能堆砌，而在于 **打通人与 AI 的协作边界**：
+
+- **开发者** 通过 GUI 连接设备、查看日志、发送指令
+- **AI Agent** 通过 CLI 连接同一会话、读取日志、发送指令
+- 双方共享同一份配置、同一份日志缓冲、同一套状态视图
+- 人能看到 AI 的操作，AI 能感知人的操作 — 透明协作
+
+```
+┌──────────────────────────────────────────────┐
+│              尘智 - Agent 工作台               │
+│                                               │
+│  开发者 (GUI)  ←──  共享会话  ──→  AI Agent (CLI) │
+│       │              │              │          │
+│       │        日志 / 配置 / 状态          │          │
+│       └──────────────┼──────────────┘          │
+│                      │                         │
+│              嵌入式设备 (串口/SSH/终端)           │
+└──────────────────────────────────────────────┘
+```
 
 ### 1.2 核心价值
 
 | 价值点 | 描述 |
 |--------|------|
-| 人机协同 | CLI 给 Agent 用，GUI 给人用，共享配置与数据 |
-| 开箱即用 | 自动检测串口、自动提权、自动重连 |
-| 专业调试 | 彩色日志、时间戳、HEX 模式、数据发送 |
-| 灵活配置 | 配置持久化、多串口标签页、日志导出 |
+| **人机协同** | 人和 AI 共享同一会话，操作实时可见，互不干扰 |
+| **透明协作** | AI 发送的命令出现在 GUI 日志中（TX 标记），人可审查；人操作 CLI 也能感知 |
+| **统一数据面** | 单一日志缓冲 + 配置持久化，GUI/CLI 数据一致 |
+| **嵌入式原生** | 串口/SSH/本地终端一站式覆盖从裸机到 Linux 的调试场景 |
+| **跨平台** | Windows/Linux/macOS 统一体验，自研终端渲染不依赖外部模拟器 |
 
 ### 1.3 目标用户
 
-- 嵌入式固件开发者（nRF52 / ESP32 / STM32 等）
-- 硬件测试工程师
-- AI Agent（自动化调试、固件烧录后验证）
+| 用户角色 | 使用方式 | 典型场景 |
+|----------|----------|----------|
+| 嵌入式固件开发者 | GUI 图形界面 | 连接开发板串口，查看日志输出，手动发送 AT 命令 |
+| 硬件测试工程师 | GUI + CLI | GUI 监控日志，CLI 脚本批量发送测试指令 |
+| AI Agent / 自动化脚本 | CLI 命令行 | 自动化调试流程：烧录→连接→发送命令→读取日志→判断结果 |
+| DevOps 流水线 | CLI 非交互模式 | 固件 CI 中通过 `--send-file` 推送固件，`--get-logs` 验证启动日志 |
+
+### 1.4 产品边界
+
+**包含：**
+- 串口终端（日志查看 + 数据收发）
+- SSH 远程终端（通过系统 ssh 命令 + PTY 桥接）
+- 本地命令行终端（cmd / PowerShell / bash）
+- CLI + GUI 双模式，IPC 实时通信
+- 会话配置持久化（JSON）
+
+**不包含：**
+- ST-Link / J-Link 硬件调试器集成（已作废，不做）
+- 图形化数据绘图/示波器
+- Modbus / CAN 等工业协议解析
+- 多设备并行固件烧录
 
 ---
 
 ## 2. 功能需求
 
-### 2.1 双模式架构
+### 2.1 会话类型
+
+系统支持 3 种会话类型：
+
+#### FR-1 串口会话 (Serial)
+
+**FR-1.1 连接参数**
+- 串口号：自动侦测（已占用端口置灰不可选）
+- 波特率：9600 / 19200 / 38400 / 57600 / 115200 / 230400 / 460800 / 921600（支持手动输入）
+- 数据位：5 / 6 / 7 / 8（默认 8）
+- 校验位：无校验 / 偶校验 / 奇校验 / 标记 / 空格
+- 停止位：1 / 1.5 / 2
+
+**FR-1.2 自动重连**
+- 串口异常断开后自动重试，间隔 1s → 2s → 3s → 5s（上限）
+- 可在配置中开关
+
+**FR-1.3 日志显示**
+- 彩色日志：TX(发送)绿色、ERROR 红色、WARN 黄色、INFO 绿色、DEBUG 蓝色、TRACE 灰色
+- 时间戳显示（可开关）：格式 `HH:MM:SS.mmm`
+- HEX 模式显示（可切换）
+- 关键字过滤（实时）
+- 自动滚动 / 暂停
+
+**FR-1.4 数据发送**
+- 文本发送：支持追加 CR / LF / CRLF / 无换行
+- HEX 发送：`01 02 03` 或 `010203` 格式
+- 发送历史（配置持久化）
+
+**FR-1.5 日志导出**
+- JSON 格式结构化导出，字段：`timestamp` / `level` / `text` / `raw_bytes` / `port`
+
+#### FR-2 SSH 会话 (SSH)
+
+**FR-2.1 连接参数**
+- 主机地址（IP 或域名）
+- 端口（默认 22）
+- 用户名
+- 密码（可选，留空则使用密钥认证）
+
+**FR-2.2 终端功能**
+- 通过系统 `ssh` 命令 + PTY 桥接实现
+- 完整 ANSI 转义序列支持（16色/256色/RGB真彩、光标控制、清屏）
+- 字体缩放（A+/A- 按钮）
+- 5 套预设配色方案：Catppuccin Dark / Light / Green Phosphor / Amber / Nord
+
+#### FR-3 本地终端会话 (CMD)
+
+**FR-3.1 终端类型**
+- Windows：cmd.exe / PowerShell / bash.exe (MSYS2)
+- Linux/macOS：bash / zsh / 用户自定义 shell
+
+**FR-3.2 终端功能**
+- 通过 PTY（Win: ConPTY，Unix: openpty）实现原生终端体验
+- 完整 ANSI 支持，与 SSH 终端共享同一渲染组件
+- shell 退出后自动关闭 Tab
+
+### 2.2 CLI + GUI 双模式协作
 
 ```
-┌─────────────────────────────────────────┐
-│         EmberIntel Serial Monitor        │
-├─────────────────┬───────────────────────┤
-│   CLI 模式       │      GUI 模式         │
-│  (Agent 使用)    │   (开发者使用)         │
-├─────────────────┼───────────────────────┤
-│ 命令行参数启动   │ 桌面窗口界面           │
-│ 非交互/交互模式  │ 标签页多串口           │
-│ 脚本友好输出     │ 鼠标+键盘操作          │
-└─────────────────┴───────────────────────┘
-           ↓ 共享核心层 ↓
-    ┌─────────────────────┐
-    │  配置持久化 (JSON)   │
-    │  日志缓冲区 (内存)   │
-    │  串口管理引擎        │
-    └─────────────────────┘
+┌─────────────────────────────────────────────────┐
+│  GUI 进程 (serial-monitor.exe)                   │
+│  ┌──────────┐  ┌──────────────────────────────┐  │
+│  │  会话列表  │  │    Tab 标签页 (QML)           │  │
+│  │          │  │  ┌────────────────────────┐  │  │
+│  │ Session1 │  │  │  日志 / 终端            │  │  │
+│  │ Session2 │  │  │  人操作可见             │  │  │
+│  │   ...    │  │  └────────────────────────┘  │  │
+│  │  [+]-+   │  │                              │  │
+│  └──────────┘  │  QLocalServer (IPC)          │  │
+│                │  ▲ 接收 CLI 命令              │  │
+│                │  ▼ 推送日志/状态到 CLI        │  │
+│                └──────────────────────────────┘  │
+└──────────────────────┬──────────────────────────┘
+                       │ QLocalSocket
+┌──────────────────────┴──────────────────────────┐
+│  CLI 进程 (serial-monitor-cli.exe)               │
+│  - AI Agent 通过参数调用                          │
+│  - 接收实时日志流                                  │
+│  - 发送命令到 GUI 执行                             │
+│  - 操作会反映在 GUI 上（TX 标记）                   │
+└─────────────────────────────────────────────────┘
 ```
 
-**FR-1.1** CLI 和 GUI 共享同一个配置文件和日志缓冲区  
-**FR-1.2** CLI 支持完全非交互式运行（适合脚本调用）  
-**FR-1.3** GUI 支持从 CLI 配置自动加载默认参数  
+**FR-4.1 透明协作机制**
+- CLI 发送数据 → GUI 日志区显示为 TX（绿色），人类可见
+- GUI 手动发送 → CLI 日志流中同样可见
+- GUI 连接/断开 → CLI 收到 statusChanged 实时同步
+- 双方共享配置文件和日志缓冲区
 
-### 2.2 串口连接管理
+**FR-4.2 CLI 命令行参数**
 
-**FR-2.1 串口自动检测**
-- 列出所有可用串口及描述信息
-- 优先推荐 USB / nRF / JLink 设备
-- 支持自动选择第一个可用串口
-
-**FR-2.2 连接参数**
-- 波特率：9600 / 19200 / 38400 / 57600 / 115200 / 230400 / 460800 / 921600
-- 数据位：7 / 8
-- 校验位：None / Even / Odd
-- 停止位：1 / 2
-- 流控：None / RTS/CTS / XON/XOFF
-
-**FR-2.3 自动重连**
-- 串口断开后自动重试
-- 重连间隔：1s → 2s → 3s → 5s（上限）
-- 可开关
-
-**FR-2.4 权限处理**
-- Windows 下自动检测权限不足
-- 自动申请管理员权限重启（保留原参数）
-
-### 2.3 数据显示
-
-**FR-3.1 文本模式**
-- 按行接收并显示
-- 自动识别日志级别并着色：
-  - ERROR → 红色
-  - WARN / WARNING → 黄色
-  - INFO → 绿色
-  - DEBUG → 青色
-  - TRACE → 灰色
-- 自动添加时间戳（可开关）
-- 时间戳格式：`HH:MM:SS.mmm`
-
-**FR-3.2 HEX 模式**
-- 以十六进制显示原始字节
-- 格式：`[时间戳] 00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F  |................|`
-- 左侧：偏移地址
-- 中间：16 进制字节（每 8 字节空一格）
-- 右侧：ASCII 可打印字符
-
-**FR-3.3 混合模式**
-- 同时显示文本和 HEX（文本在上，HEX 在下）
-
-**FR-3.4 显示控制**
-- 暂停 / 恢复自动滚动
-- 清空显示（不清除缓冲区）
-- 字体大小调整（GUI）
-
-### 2.4 数据发送
-
-**FR-4.1 文本发送**
-- 输入字符串，自动追加 `\r\n`
-- 支持发送历史记录
-
-**FR-4.2 HEX 发送**
-- 输入十六进制字符串，如 `01 02 03 04`
-- 自动解析为字节发送
-- 支持无空格连续输入，如 `01020304`
-
-**FR-4.3 发送选项**
-- 追加换行：CR / LF / CRLF / 无
-- 循环发送（间隔可调）
-
-### 2.5 多串口支持
-
-**FR-5.1 标签页管理**
-- 每个串口一个标签页
-- 标签页显示串口号和连接状态
-- 支持新建、关闭、重命名标签页
-
-**FR-5.2 独立配置**
-- 每个标签页独立的连接参数
-- 每个标签页独立的显示设置
-
-### 2.6 日志管理
-
-**FR-6.1 缓冲区**
-- 默认 10000 行
-- 可配置大小
-- 循环覆盖（FIFO）
-
-**FR-6.2 筛选过滤**
-- 按关键字实时过滤显示
-- 支持正则表达式（高级）
-- 按日志级别过滤
-
-**FR-6.3 导出功能**
-- 格式：JSON（结构化）
-- JSON 字段：`timestamp`, `level`, `raw_bytes`, `text`, `port`
-- 支持导出当前显示或全部缓冲区
-
-### 2.7 配置持久化
-
-**FR-7.1 配置文件位置**
-- Windows: `%APPDATA%/EmberIntel/serial-monitor/config.json`
-- Linux/Mac: `~/.config/emberintel/serial-monitor/config.json`
-
-**FR-7.2 保存内容**
-- 最近使用的串口参数（端口、波特率等）
-- 显示偏好（颜色主题、时间戳开关、字体大小）
-- 筛选规则历史
-- 发送历史记录
-- 窗口位置和大小（GUI）
-
-**FR-7.3 配置加载**
-- 启动时自动加载上次配置
-- CLI 参数优先于配置文件
-
-### 2.8 CLI 交互命令
-
-| 命令 | 说明 |
+| 参数 | 说明 |
 |------|------|
-| `q` / `quit` / `exit` | 退出程序 |
-| `c` / `clear` | 清空显示 |
-| `s` / `status` | 显示连接状态 |
-| `send <data>` | 发送文本数据 |
-| `sendhex <hex>` | 发送 HEX 数据 |
-| `filter <keyword>` | 设置筛选关键字 |
-| `hex` | 切换 HEX 显示模式 |
-| `text` | 切换文本显示模式 |
-| `help` / `?` | 显示帮助 |
+| `-p, --port PORT` | 串口号 |
+| `-b, --baudrate RATE` | 波特率 |
+| `-f, --filter KW` | 过滤关键字 |
+| `-o, --output FILE` | 保存日志到文件 |
+| `--hex` | HEX 显示模式 |
+| `--no-timestamp` | 禁用时间戳 |
+| `--cli` | 交互 CLI 模式 |
+| `--json` | JSON 输出模式（机器可读） |
+| `--ipc NAME` | IPC 服务名（默认: serial_monitor_ipc） |
+| `--connect PORT` | 连接指定串口 |
+| `--send DATA` | 发送文本数据 |
+| `--send-file FILE` | 发送二进制文件（Base64 编码） |
+| `--list` | 列出可用串口 |
+| `--get-status` | 显示连接状态 |
+| `--get-logs N` | 获取最近 N 条日志 |
 
----
-
-## 3. 非功能需求
-
-### 3.1 性能
-
-| 指标 | 要求 |
-|------|------|
-| 串口读取延迟 | < 10ms |
-| 日志缓冲区操作 | O(1) 追加 |
-| GUI 刷新率 | 60fps，不卡顿 |
-| 最大支持波特率 | 3Mbps |
-| 同时连接串口数 | ≥ 4 个 |
-
-### 3.2 兼容性
-
-- **操作系统**：Windows 10/11、Linux、macOS
-- **Python 版本**：3.8+
-- **串口芯片**：CP210x、FTDI、CH340、JLink CDC、nRF USB CDC
-
-### 3.3 可靠性
-
-- 串口异常断开不崩溃
-- 配置损坏自动恢复默认值
-- 日志文件写入失败不中断程序
-
-### 3.4 可维护性
-
-- 核心串口逻辑与界面分离
-- 统一配置管理模块
-- 模块化设计，便于扩展
-
----
-
-## 4. 用户交互设计规范
-
-### 4.1 CLI 交互流程
+**FR-4.3 CLI 交互模式命令**
 
 ```
-$ serial-monitor -p COM5 -b 115200
-[SYSTEM] 已连接到 COM5 @ 115200bps
-[SYSTEM] 按 Ctrl+C 停止，输入 'help' 查看命令
-[10:23:45.123] [INFO]  Device initialized
-[10:23:45.234] [DEBUG] BLE stack started
-> filter ERROR        ← 用户输入
-[SYSTEM] 筛选关键字: ERROR
-> send reboot         ← 用户输入
->>> 发送: reboot
-[10:23:50.001] [INFO]  Rebooting...
-> q                   ← 用户输入
-[SYSTEM] 已断开
+connect <port> [baud]    连接串口
+disconnect / disc        断开当前串口
+status                   显示连接状态
+list                     列出可用串口
+send <data>              发送文本数据（自动追加 CRLF）
+sendhex <hex>            发送 HEX 数据
+sendfile <file>          发送二进制文件
+clear                    清空日志缓存
+filter <keyword>         设置过滤关键字
+hex / text               切换 HEX/文本 显示模式
+timestamp / ts           切换时间戳显示
+export <file>            导出日志为 JSON 文件
+help / ?                 显示帮助
+quit / q / exit          退出 CLI（GUI 继续运行）
 ```
 
-### 4.2 GUI 布局规范
+### 2.3 会话管理
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  EmberIntel Serial Monitor          [连接] [设置] [?]   │  ← 标题栏
-├─────────────────────────────────────────────────────────┤
-│  [COM5●] [COM6○] [+]                                   │  ← 标签页栏
-├─────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────────────┐   │
-│  │ [10:23:45.123] [INFO]  Device initialized       │   │  ← 日志显示区
-│  │ [10:23:45.234] [DEBUG] BLE stack started        │   │
-│  │ [10:23:46.001] [ERROR] Connection timeout!      │   │
-│  │                                                 │   │
-│  └─────────────────────────────────────────────────┘   │
-├─────────────────────────────────────────────────────────┤
-│  筛选: [________]  [文本▼]  [暂停] [清空] [导出]       │  ← 工具栏
-├─────────────────────────────────────────────────────────┤
-│  发送: [________________________] [发送] [HEX发送]     │  ← 发送区
-├─────────────────────────────────────────────────────────┤
-│  COM5 | 115200-8-N-1 | 已连接 | 接收: 1.2KB 发送: 45B │  ← 状态栏
-└─────────────────────────────────────────────────────────┘
-```
+**FR-5.1 连接向导**
+- 通过侧边栏 `[+]` 按钮弹出
+- 三页向导：串口 / 终端 / SSH
+- 填写参数后"创建会话"，存入 SavedPorts 列表
 
-### 4.3 颜色主题
+**FR-5.2 会话列表**
+- 侧边栏显示已保存会话
+- 按类型显示彩色图标：S(串口 蓝色) / T(终端 绿色) / H(SSH 橙色)
+- 单击会话直接连接
 
-| 元素 | 颜色（浅色主题） | 颜色（深色主题） |
-|------|------------------|------------------|
-| 背景 | #FFFFFF | #1E1E1E |
-| 普通文本 | #333333 | #D4D4D4 |
-| ERROR | #D32F2F | #F44336 |
-| WARN | #F9A825 | #FFEB3B |
-| INFO | #388E3C | #4CAF50 |
-| DEBUG | #0288D1 | #03A9F4 |
-| TRACE | #757575 | #9E9E9E |
-| 时间戳 | #9E9E9E | #757575 |
+**FR-5.3 Tab 管理**
+- 每个已连接会话对应一个 Tab
+- TabBar 显示标题 + 连接状态
+- `[×]` 关闭当前 Tab + 断开连接
 
-### 4.4 快捷键
+### 2.4 配置持久化
 
-| 快捷键 | 功能 |
-|--------|------|
-| Ctrl + T | 新建标签页 |
-| Ctrl + W | 关闭当前标签页 |
-| Ctrl + F | 聚焦筛选框 |
-| Ctrl + S | 保存日志 |
-| Ctrl + L | 清空显示 |
-| Ctrl + P | 暂停/恢复 |
-| Ctrl + Enter | 发送数据 |
-| Ctrl + + | 放大字体 |
-| Ctrl + - | 缩小字体 |
+**FR-6.1 配置文件位置**
+- Windows: `%APPDATA%/EmberInter/EmberInterDebugTool/config.json`
+- Linux: `~/.config/EmberInter/EmberInterDebugTool/config.json`
 
----
-
-## 5. 接口设计
-
-### 5.1 CLI 命令行参数
-
-```
-serial-monitor [-p PORT] [-b BAUD] [-d DATABITS] [-y PARITY] [-s STOPBITS]
-               [-f FILTER] [-o OUTPUT] [--hex] [--no-timestamp]
-               [--no-reconnect] [--clear] [--list] [--cli] [--config PATH]
-               [--bufsize N]
-
-参数:
-  -p, --port          串口号 (如 COM5, /dev/ttyUSB0)
-  -b, --baudrate      波特率 (默认: 115200)
-  -d, --databits      数据位 (7/8, 默认: 8)
-  -y, --parity        校验位 (N/E/O, 默认: N)
-  -s, --stopbits      停止位 (1/2, 默认: 1)
-  -f, --filter        筛选关键字
-  -o, --output        保存日志到文件
-  --hex               HEX 显示模式
-  --no-timestamp      禁用时间戳
-  --no-reconnect      禁用自动重连
-  --clear             启动时清空日志
-  --list              列出可用串口
-  --cli               交互式 CLI 模式
-  --config            指定配置文件路径
-  --bufsize           缓冲区大小 (默认: 10000)
-```
-
-### 5.2 配置文件结构 (JSON)
+**FR-6.2 保存内容**
 
 ```json
 {
-  "version": "2.0",
-  "serial": {
-    "port": "COM5",
-    "baudrate": 115200,
-    "databits": 8,
-    "parity": "N",
-    "stopbits": 1,
-    "flowcontrol": "N"
-  },
+  "version": "3.0",
   "display": {
     "theme": "dark",
-    "timestamp": true,
-    "hex_mode": false,
-    "font_size": 12,
-    "buffer_size": 10000,
-    "auto_scroll": true
+    "showTimestamp": true,
+    "hexMode": false,
+    "autoScroll": true,
+    "autoReconnect": true
   },
-  "filters": {
-    "current": "",
-    "history": ["ERROR", "BLE"]
-  },
+  "filterHistory": ["ERROR", "BLE"],
   "send": {
     "history": ["reboot", "status"],
     "append": "CRLF"
   },
-  "gui": {
-    "window_width": 1000,
-    "window_height": 700,
-    "tabs": [
-      {"port": "COM5", "name": "nRF52"},
-      {"port": "COM6", "name": "ESP32"}
-    ]
-  }
-}
-```
-
-### 5.3 日志导出结构 (JSON)
-
-```json
-{
-  "export_time": "2026-05-17T10:23:45+08:00",
-  "source": "COM5",
-  "entries": [
+  "savedPorts": [
     {
-      "timestamp": "10:23:45.123",
-      "level": "INFO",
-      "text": "Device initialized",
-      "raw_bytes": "5B494E464F5D2044657669636520696E697469616C697A6564"
+      "type": "serial",
+      "name": "STM32调试",
+      "port": "COM3",
+      "baudrate": 115200,
+      "databits": 8,
+      "parity": "N",
+      "stopbits": 1
+    },
+    {
+      "type": "ssh",
+      "name": "开发板",
+      "extra": {
+        "host": "192.168.1.100",
+        "port": 22,
+        "user": "root"
+      }
+    },
+    {
+      "type": "cmd",
+      "name": "本地Bash",
+      "extra": {
+        "shell": "bash.exe"
+      }
     }
   ]
 }
@@ -377,60 +274,342 @@ serial-monitor [-p PORT] [-b BAUD] [-d DATABITS] [-y PARITY] [-s STOPBITS]
 
 ---
 
-## 6. 项目阶段规划
+## 3. 非功能需求
 
-### Phase 1: 核心重构（1-2 周）
-- [ ] 拆分 monolith 为模块化架构
-- [ ] 实现配置管理模块
-- [ ] 增强 CLI（HEX 模式、发送功能）
+### 3.1 性能
 
-### Phase 2: GUI 开发（2-3 周）
-- [ ] 技术选型与框架搭建
-- [ ] 基础窗口、标签页、日志显示
-- [ ] 串口连接面板
+| 指标 | 要求 | 说明 |
+|------|------|------|
+| 串口读取延迟 | < 10ms | 从硬件发来到界面显示 |
+| 日志缓冲区容量 | 10000 行（可配置） | O(1) 追加，不随行数增加变慢 |
+| GUI 刷新率 | 60fps | ListView 虚拟化渲染，不卡顿 |
+| 最大波特率 | 3Mbps | 高速串口不丢数据 |
+| 同时连接数 | ≥ 4 个会话 | 独立线程，互不阻塞 |
+| CLI 启动时间 | < 1s | 连接到 IPC 服务 |
 
-### Phase 3: 功能完善（1-2 周）
-- [ ] 多串口标签页
-- [ ] 日志导出（JSON）
-- [ ] 配置持久化
-- [ ] 主题切换
+### 3.2 兼容性
 
-### Phase 4: 打包发布（1 周）
-- [ ] PyInstaller 打包 exe
-- [ ] 安装程序
-- [ ] 文档完善
+| 维度 | 要求 |
+|------|------|
+| 操作系统 | Windows 10/11、Linux (Ubuntu 20.04+)、macOS 12+ |
+| 编译器 | MinGW-w64 gcc 13+、MSVC 2022+、GCC 11+ / Clang 14+ |
+| Qt 版本 | Qt6.5+ (QML 模式) |
+| 串口芯片 | CP210x、FTDI、CH340、CDC ACM 通用 |
+| 终端 | Win: ConPTY (Win10 19041+)、Unix: openpty |
+
+### 3.3 可靠性
+
+| 场景 | 处理策略 |
+|------|----------|
+| 串口异常断开 | 自动重连，状态栏提示，日志不丢失 |
+| 配置文件损坏 | 恢复默认配置，日志警告通知 |
+| CLI 进程异常退出 | GUI 清理客户端连接，不影响串口 |
+| GUI 进程异常退出 | CLI 检测断开，提示用户 |
+| 日志文件写入失败 | 不中断程序，错误通知 |
+
+### 3.4 安全性
+
+| 项目 | 策略 |
+|------|------|
+| SSH 密码 | 内存中持有，不写入配置文件 |
+| IPC 通信 | 仅限本机（QLocalSocket），不对外暴露 |
+| 配置文件 | 存储于用户目录，不包含敏感信息 |
 
 ---
 
-## 7. 验收标准
+## 4. 系统架构
 
-| 验收项 | 标准 |
-|--------|------|
-| CLI 基础功能 | `serial-monitor -p COM5` 正常显示彩色日志 |
-| CLI HEX 模式 | `--hex` 参数正确显示十六进制 |
-| CLI 发送 | `send` / `sendhex` 命令正常发送数据 |
-| GUI 启动 | 双击 exe 正常打开窗口 |
-| GUI 连接 | 选择串口后点击连接，日志正常显示 |
-| GUI 多标签 | 至少同时打开 2 个串口标签页 |
-| 配置持久化 | 关闭后重启，参数自动恢复 |
-| 日志导出 | 导出 JSON 格式正确，字段完整 |
-| 打包测试 | 在无 Python 环境机器上正常运行 |
+### 4.1 分层架构
+
+```
+┌───────────────────────────────────────────────┐
+│              表示层 (Presentation)              │
+│  GUI: QML (ApplicationWindow + Loader + ListView) │
+│  CLI: 终端 I/O (QTextStream + stdin/stdout)      │
+├───────────────────────────────────────────────┤
+│              业务逻辑层 (Application)           │
+│  AppCore (TabModel / SavedPortModel / IPC路由)  │
+│  SerialTabPage / TerminalTabPage / DebugPage    │
+│  CLIApp (命令解析 / 交互循环)                     │
+├───────────────────────────────────────────────┤
+│              核心服务层 (Core Services)          │
+│  SerialEngine (QSerialPort + QThread)           │
+│  PtyProcess (Win ConPTY / Unix openpty)         │
+│  TerminalView (QQuickPaintedItem + AnsiParser)   │
+│  LogBuffer (QMutex + deque<LogEntry>)            │
+│  IPCServer / IPCClient (QLocalSocket)            │
+│  ConfigManager (RapidJSON + QJsonDocument)       │
+├───────────────────────────────────────────────┤
+│              基础设施层 (Infrastructure)         │
+│  Qt6 (Core/Quick/SerialPort/Network)            │
+│  spdlog (日志) / fmt (格式化) / RapidJSON        │
+└───────────────────────────────────────────────┘
+```
+
+### 4.2 模块依赖
+
+```
+serial-monitor.exe ───────────────┐
+  ├── AppCore (TabModel, SavedPortModel, IPC路由)
+  ├── SerialTabPage ─────► SerialEngine, LogBuffer, LogListModel
+  ├── TerminalTabPage ────► TerminalView, PtyProcess
+  └── IPCServer ──────────────────┐
+                                  │
+serial-monitor-cli.exe ───────────┤
+  ├── CLIApp                      │
+  └── IPCClient ──────────────────┘
+                                  │
+libserialmonitor_core.a ◄─────────┘
+  ├── SerialEngine, LogBuffer, LogParser, LogExporter
+  ├── ConfigManager (RapidJSON)
+  ├── AnsiParser (纯算法)
+  ├── PtyProcess (Win/Unix)
+  └── IpcProtocol (JSON 消息协议)
+```
+
+### 4.3 IPC 通信模型
+
+```
+CLI Client                              GUI Server
+    │                                       │
+    │── connectToServer() ─────────────────►│
+    │                                       │ onNewConnection()
+    │◄── 日志流推送 (log_entry) ────────────│
+    │◄── 状态推送 (status) ────────────────│
+    │                                       │
+    │── {"type":"connect","port":"COM3"} ──►│
+    │◄── {"type":"response","ok":true} ─────│
+    │                                       │
+    │── {"type":"send_text","data":"AT"} ──►│
+    │                                       │── 串口写入 ──► 设备
+    │◄── 日志流: TX 标记可见 ◄──────────────│
+```
+
+- **传输层**: QLocalSocket / QLocalServer (Windows Named Pipe / Unix Domain Socket)
+- **消息格式**: JSON，每行一个完整消息，以 `\n` 分隔
+- **消息类型**: `log_entry` / `status_change` / `port_list` / `connect` / `disconnect` / `send_text` / `send_hex` / `get_logs` / `export_logs` / `clear_logs` / `pause` / `resume`
+- **请求-响应**: 可选 `id` 字段匹配命令与响应
+
+### 4.4 线程模型
+
+| 组件 | 线程 | 同步方式 |
+|------|------|----------|
+| QML 渲染 | 主线程 | Qt 事件循环 |
+| SerialEngine | 独立 QThread | QSerialPort moveToThread + 信号槽 |
+| PtyProcess (Win) | 主线程 | QTimer 轮询管道 I/O |
+| PtyProcess (Unix) | 主线程 | QSocketNotifier 异步 I/O |
+| LogBuffer | 多线程读写 | QMutex |
+| IPCServer | 主线程 | QLocalServer 事件驱动 |
 
 ---
 
-## 8. 附录
+## 5. 用户交互设计
 
-### 8.1 术语表
+> **完整的交互设计文档见:** `docs/交互设计文档.md`  
+> 包含 L1 概念级（信息架构/导航模型）、L2 页面级（布局线框图/组件编排）、L3 组件级（全部状态/行为）、L4 微交互（动画/反馈/边界处理）。
+
+### 设计原则
+
+| 原则 | 描述 |
+|------|------|
+| **开发者原生** | 遵循 VS Code / iTerm2 / SecureCRT 交互范式 |
+| **人机可感知** | CLI Agent 操作在 GUI 可见，反之亦然 |
+| **即时反馈** | 所有操作 <100ms 给出视觉响应 |
+| **容错优先** | 配置损坏降级默认，连接失败保留参数 |
+
+### 信息架构
+
+- **App Shell**: 左侧 Sidebar (220px, 可折叠) + 右侧 Tab 内容区 + 底部 StatusBar
+- **导航**: 侧边栏会话列表管理已保存会话，TabBar 管理已打开会话，ConnectWizard 模态弹窗创建新会话
+
+### 核心页面
+
+| 页面 | 布局要点 |
+|------|----------|
+| 主窗口 | 侧边栏 (Logo+会话列表+设置) + StackLayout (动态加载 Tab QML) + 状态栏 |
+| SerialTab | 工具栏(过滤+HEX/TS/暂停/清空/导出) + ListView(22px行高) + SendPanel(64px) |
+| TerminalTab | 终端状态栏(28px,配色+字体) + TerminalView(80×24字符网格) |
+| ConnectionWizard | 480×400 模态弹窗，三页切换(串口/终端/SSH)，表单验证 |
+
+### 交互设计亮点
+
+- CLI Agent 发送的命令在 GUI 日志中以 `[TX] 🤖 CLI` 标记显示
+- 自动滚动 + 手动回溯悬浮 [↓ 新消息] 按钮
+- 连接状态指示器呼吸脉冲动画
+- 终端 5 套独立配色方案（不影响主界面）
+- 发送按钮 300ms 绿色反馈脉冲
+
+---
+
+## 6. 接口规范
+
+### 6.1 CLI 命令行完整参数
+
+```
+serial-monitor-cli [选项]
+
+监听模式:
+  -p, --port <PORT>         串口号
+  -b, --baudrate <RATE>     波特率 (默认: 115200)
+  -f, --filter <KEYWORD>    过滤关键字
+  -o, --output <FILE>       保存日志到文件
+  --hex                     HEX 显示模式
+  --no-timestamp            禁用时间戳
+  --cli                     交互 CLI 模式
+  --json                    机器可读 JSON 输出
+  --ipc <NAME>              IPC 服务名 (默认: serial_monitor_ipc)
+
+操作命令:
+  --connect <PORT>          连接指定串口
+  --send <DATA>             发送文本数据（自动追加 CRLF）
+  --send-file <FILE>        发送二进制文件
+  --list                    列出可用串口
+  --get-status              显示连接状态
+  --get-logs <N>            获取最近 N 条日志
+
+帮助:
+  -h, --help                显示帮助
+  -v, --version             显示版本
+```
+
+### 6.2 IPC 消息协议
+
+**通用消息结构：**
+```json
+{
+  "type": "消息类型",
+  "id": "可选请求ID",
+  "payload": { }
+}
+```
+
+**核心消息类型：**
+
+| type | 方向 | 说明 |
+|------|------|------|
+| `log_entry` | GUI → CLI | 实时日志推送 |
+| `status_change` | GUI → CLI | 连接状态变更 |
+| `port_list` | GUI → CLI | 可用串口列表 |
+| `connect` | CLI → GUI | 请求连接串口 |
+| `disconnect` | CLI → GUI | 请求断开 |
+| `send_text` | CLI → GUI | 发送文本数据 |
+| `send_hex` | CLI → GUI | 发送 HEX 数据 |
+| `get_logs` | CLI → GUI | 获取日志 |
+| `export_logs` | CLI → GUI | 导出日志到文件 |
+| `clear_logs` | CLI → GUI | 清空日志 |
+| `pause` / `resume` | CLI → GUI | 暂停/恢复日志输出 |
+| `response` | 双向 | 命令响应 |
+| `activate_window` | CLI → GUI | 激活 GUI 窗口 |
+
+### 6.3 配置文件 JSON Schema
+
+详见 [FR-6.2 保存内容](#fr-62-保存内容)。
+
+### 6.4 日志导出格式
+
+```json
+{
+  "export_time": "2026-06-10T10:23:45+08:00",
+  "source": "COM3",
+  "entries": [
+    {
+      "timestamp": "10:23:45.123",
+      "level": "INFO",
+      "text": "Device initialized",
+      "raw_bytes": "44657669636520696E697469616C697A6564"
+    }
+  ]
+}
+```
+
+---
+
+## 7. 项目阶段规划
+
+### Phase 0-5: 已完成的里程碑
+
+| Phase | 内容 | 状态 |
+|-------|------|------|
+| Phase 0 | Qt6 环境搭建 (MSYS2 pacman 安装) | ✅ |
+| Phase 1 | core 库 Qt6 适配编译 | ✅ |
+| Phase 2 | QML 框架骨架 (main.qml + AppCore) | ✅ |
+| Phase 3 | Tab 迁移 (SerialTab / TerminalTab) | ✅ |
+| Phase 4 | 终端渲染增强 (ANSI / PTY / ConPTY) | ✅ |
+| Phase 5 | CLI 回归验证 + DebugTab (调试已作废) | ✅ |
+
+### Phase 6: 当前阶段 — 完善与发布
+
+| 任务 | 优先级 | 说明 |
+|------|--------|------|
+| PRD 与设计文档完善 | P0 | 本文档的持续更新 |
+| Qt5 遗留代码清理 | P1 | 移除 `main_window` / `log_view` / `send_panel` 等旧 Widgets |
+| 平台兼容性验证 | P1 | Linux (PTY) + macOS 编译运行测试 |
+| ConPTY Win10 19041+ 兼容 | P1 | 低版本 Windows 回退到 QProcess pipe |
+| 单元测试建设 | P2 | SerialEngine / LogBuffer / AnsiParser 核心模块 |
+| CI/CD 流水线 | P2 | GitHub Actions 自动化构建 + 测试 |
+| 打包发布 | P2 | Inno Setup (Win) / AppImage (Linux) / DMG (macOS) |
+
+---
+
+## 8. 验收标准
+
+### 8.1 功能验收
+
+| 验收项 | 标准 | 验证方法 |
+|--------|------|----------|
+| GUI 启动 | 双击 exe 正常打开窗口，侧边栏 + Tab 区渲染正确 | 手动启动 |
+| 串口连接 | 选择端口后点击连接，日志正常显示，状态栏更新 | 连接真实/虚拟串口 |
+| 彩色日志 | TX 绿色、ERROR 红色、WARN 黄色、INFO 绿色 | 发送对应级别日志 |
+| HEX 模式 | 切换 HEX 后显示十六进制 | 点击 HEX 按钮 |
+| 过滤功能 | 输入关键字后仅显示匹配行 | 输入 ERROR |
+| 数据发送 | 输入文本 → 发送 → TX 出现在日志中 | 手动发送 |
+| SSH 连接 | 通过连接向导创建 SSH 会话，终端可交互 | 连接 Linux 主机 |
+| 本地终端 | 创建终端会话，bash/powershell/cmd 可交互 | 启动终端 Tab |
+| 会话持久化 | 创建会话 → 关闭程序 → 重启 → 会话列表保留 | 重启验证 |
+| CLI 基础功能 | `--list` 列出端口，`--connect` 连接，`--send` 发送 | CLI 调用 |
+| CLI 日志流 | `-p COM3` 实时接收日志 | CLI 监听 |
+| 人机协同 | CLI 发送命令 → GUI TX 可见；GUI 操作 → CLI 日志可见 | 双开验证 |
+
+### 8.2 性能验收
+
+| 指标 | 标准 |
+|------|------|
+| 10000 行日志渲染 | ListView 不卡顿，< 16ms/帧 |
+| 115200bps 持续接收 | 24h 不丢数据、不崩溃 |
+| CLI 启动 | < 1s 连接到 IPC 服务 |
+| 内存占用 | 空载 < 80MB，4 会话 < 200MB |
+
+### 8.3 兼容性验收
+
+| 平台 | 状态 |
+|------|------|
+| Windows 10/11 (MinGW64) | 已验证 ✅ |
+| Windows 10/11 (MSVC) | 待验证 |
+| Linux (Ubuntu 20.04+) | 待验证 |
+| macOS 12+ | 待验证 |
+
+---
+
+## 附录 A: 术语表
 
 | 术语 | 说明 |
 |------|------|
+| IPC | Inter-Process Communication，进程间通信 |
+| PTY | Pseudo-Terminal，伪终端 |
+| ConPTY | Windows Pseudo Console API |
+| ANSI | ANSI 转义序列标准，控制终端颜色/光标 |
 | CLI | Command Line Interface，命令行界面 |
 | GUI | Graphical User Interface，图形用户界面 |
-| HEX | 十六进制表示 |
-| CDC | Communication Device Class，USB 串口设备类 |
-| FIFO | First In First Out，先进先出 |
+| TX | 发送 (Transmit) |
+| RX | 接收 (Receive) |
+| FIFO | First In First Out，先进先出缓冲 |
 
-### 8.2 参考资源
+## 附录 B: 参考文档
 
-- pyserial 文档: https://pyserial.readthedocs.io/
-- 现有代码: [serial_monitor.py](file:///f:/work/software/serial-monitor/serial_monitor.py)
+| 文档 | 路径 |
+|------|------|
+| 项目架构与模块设计 | `docs/项目架构与模块设计文档.md` |
+| IPC 通信协议 | `docs/IPC通信协议文档.md` |
+| CLI 接口规范 | `docs/CLI接口规范文档.md` |
+| 技术可行性分析 | `docs/技术可行性分析报告.md` |
+| 项目构建与打包 | `project.md` |
