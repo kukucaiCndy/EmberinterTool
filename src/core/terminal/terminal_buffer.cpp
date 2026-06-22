@@ -21,7 +21,7 @@ void TerminalBuffer::resize(int cols, int rows)
     if (cols == cols_ && rows == rows_) return;
 
     // 保存旧数据
-    auto oldScreen = std::move(screen_);
+    auto oldScreen = screen_;
     int oldCols = cols_;
     int oldRows = rows_;
 
@@ -29,17 +29,24 @@ void TerminalBuffer::resize(int cols, int rows)
     rows_ = rows;
 
     // 重建屏幕
-    screen_.resize(rows_);
-    for (auto& line : screen_) {
-        line.resize(cols_);
-    }
+    screen_.assign(rows_, std::vector<TerminalCell>(cols_));
 
-    // 复制旧数据
+    // 复制旧数据 (左上对齐)
     int copyRows = std::min(oldRows, rows_);
     int copyCols = std::min(oldCols, cols);
     for (int r = 0; r < copyRows; r++) {
         for (int c = 0; c < copyCols; c++) {
             screen_[r][c] = oldScreen[r][c];
+        }
+    }
+
+    // 当高度变小时, 将丢弃的底部行移入滚动历史 (主缓冲区)
+    if (oldRows > rows_ && !usingAlternate_) {
+        for (int r = rows_; r < oldRows; ++r) {
+            scrollback_.push_back(std::move(oldScreen[r]));
+        }
+        while (static_cast<int>(scrollback_.size()) > scrollbackMax_) {
+            scrollback_.pop_front();
         }
     }
 
@@ -54,9 +61,11 @@ void TerminalBuffer::resize(int cols, int rows)
     scrollTop_ = 0;
     scrollBottom_ = rows_ - 1;
 
-    // 调整光标位置
-    cursor_.col = std::min(cursor_.col, cols_ - 1);
-    cursor_.row = std::min(cursor_.row, rows_ - 1);
+    // 调整光标位置（防止 cols_/rows_ 为 0 时 clamp UB）
+    if (cols_ > 0) cursor_.col = std::min(cursor_.col, cols_ - 1);
+    else cursor_.col = 0;
+    if (rows_ > 0) cursor_.row = std::min(cursor_.row, rows_ - 1);
+    else cursor_.row = 0;
 }
 
 void TerminalBuffer::useAlternateBuffer()
@@ -111,12 +120,14 @@ void TerminalBuffer::useNormalBuffer()
 
 void TerminalBuffer::setCursorCol(int col)
 {
+    if (cols_ <= 0) { cursor_.col = 0; pendingWrap_ = false; return; }
     cursor_.col = std::clamp(col, 0, cols_ - 1);
     pendingWrap_ = false;
 }
 
 void TerminalBuffer::setCursorRow(int row)
 {
+    if (rows_ <= 0) { cursor_.row = 0; pendingWrap_ = false; return; }
     int minRow = cursor_.originMode ? scrollTop_ : 0;
     int maxRow = cursor_.originMode ? scrollBottom_ : (rows_ - 1);
     cursor_.row = std::clamp(row, minRow, maxRow);
@@ -162,6 +173,7 @@ void TerminalBuffer::restoreCursor()
 
 void TerminalBuffer::setScrollRegion(int top, int bottom)
 {
+    if (rows_ <= 0) { scrollTop_ = 0; scrollBottom_ = 0; return; }
     scrollTop_ = std::clamp(top, 0, rows_ - 1);
     scrollBottom_ = std::clamp(bottom, 0, rows_ - 1);
     if (scrollTop_ >= scrollBottom_) {
@@ -492,12 +504,20 @@ int TerminalBuffer::prevTabStop(int col) const
 
 std::vector<TerminalCell>& TerminalBuffer::line(int row)
 {
-    ensureRow(row);
+    // 边界检查，防止越界访问导致 UB
+    static std::vector<TerminalCell> empty;
+    if (row < 0 || row >= static_cast<int>(screen_.size())) {
+        return empty;
+    }
     return screen_[row];
 }
 
 const std::vector<TerminalCell>& TerminalBuffer::line(int row) const
 {
+    static const std::vector<TerminalCell> empty;
+    if (row < 0 || row >= static_cast<int>(screen_.size())) {
+        return empty;
+    }
     return screen_[row];
 }
 
@@ -563,8 +583,13 @@ QString TerminalBuffer::selectedText() const
         for (int c = from; c <= to; c++) {
             if (c < 0 || c >= cols_) continue;
             const auto& cell = screen_[r][c];
-            if (cell.width != CellWidth::Cont && cell.ch != ' ') {
-                text += QChar(cell.ch);
+            if (cell.width != CellWidth::Cont) {
+                if (cell.ch > 0xFFFF) {
+                    char32_t cp = cell.ch;
+                    text += QString::fromUcs4(&cp, 1);
+                } else {
+                    text += QChar(static_cast<ushort>(cell.ch));
+                }
             }
         }
         if (r < endRow) text += '\n';
@@ -576,7 +601,7 @@ QString TerminalBuffer::selectedText() const
 
 void TerminalBuffer::ensureRow(int row)
 {
-    // screen_ 已在 resize 中分配, 这里只做边界检查
+    // line() 方法已做边界检查，此方法保留为空操作以兼容现有调用
     (void)row;
 }
 

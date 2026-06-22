@@ -29,20 +29,26 @@ QStringList LogParser::extractLines(const QByteArray& data, QByteArray& remainde
 
 QString LogParser::detectLevel(const QString& line)
 {
-    QString upper = line.toUpper();
-    if (upper.contains("ERROR") || upper.contains("ERR]") || upper.contains("FAIL")) {
+    QString upper = line.trimmed().toUpper();
+
+    auto startsWithLevel = [&upper](const QString& prefix) {
+        return upper.startsWith(prefix) || upper.startsWith("[" + prefix + "]") ||
+               upper.startsWith("<" + prefix + ">");
+    };
+
+    if (startsWithLevel("ERROR") || startsWithLevel("ERR") || upper.contains("FAIL")) {
         return "ERROR";
     }
-    if (upper.contains("WARN") || upper.contains("WARNING")) {
+    if (startsWithLevel("WARN") || startsWithLevel("WARNING")) {
         return "WARN";
     }
-    if (upper.contains("INFO")) {
+    if (startsWithLevel("INFO")) {
         return "INFO";
     }
-    if (upper.contains("DEBUG") || upper.contains("DBG]")) {
+    if (startsWithLevel("DEBUG") || startsWithLevel("DBG")) {
         return "DEBUG";
     }
-    if (upper.contains("TRACE")) {
+    if (startsWithLevel("TRACE")) {
         return "TRACE";
     }
     return "";
@@ -106,16 +112,6 @@ QString LogParser::formatHex(const QByteArray& data, int baseOffset)
     }
 
     return result;
-}
-
-QColor LogParser::levelColor(const QString& level)
-{
-    if (level == "ERROR") return QColor("#D32F2F");
-    if (level == "WARN")  return QColor("#F9A825");
-    if (level == "INFO")  return QColor("#388E3C");
-    if (level == "DEBUG") return QColor("#0288D1");
-    if (level == "TRACE") return QColor("#757575");
-    return QColor("#333333");
 }
 
 QString LogParser::levelColorHex(const QString& level)

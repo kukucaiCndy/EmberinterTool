@@ -40,7 +40,7 @@ Source: "emberInter\imageformats\*.dll"; DestDir: "{app}\imageformats"; Flags: i
 Source: "emberInter\styles\*"; DestDir: "{app}\styles"; Flags: ignoreversion
 Source: "emberInter\icons\*"; DestDir: "{app}\icons"; Flags: ignoreversion
 Source: "emberInter\*.bat"; DestDir: "{app}"; Flags: ignoreversion
-Source: "emberInter\skill\*"; DestDir: "{app}\skill"; Flags: ignoreversion
+Source: "emberInter\qml\*"; DestDir: "{app}\qml"; Flags: ignoreversion recursesubdirs
 
 [Icons]
 Name: "{group}\尘智串口调试工具 (GUI)"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\icons\app.ico"

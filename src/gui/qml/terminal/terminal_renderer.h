@@ -42,6 +42,7 @@ struct TerminalSnapshot {
         bool bold;
         bool italic;
         bool inverse;
+        bool emoji;        // 彩色 Emoji，渲染时使用纹理原色
         // 字形纹理坐标 (在 synchronize 中预计算)
         float u0, v0, u1, v1;
     };
@@ -78,7 +79,7 @@ private:
         float x, y;       // 屏幕坐标
         float u, v;       // 纹理坐标
         uint32_t color;   // 颜色 (ABGR)
-        uint32_t flags;   // 标志位
+        float emoji;      // 1.0=彩色 Emoji(采样纹理原色), 0.0=普通文本(前景色着色)
     };
 
     void buildBackgroundVertices(const TerminalSnapshot& snapshot);

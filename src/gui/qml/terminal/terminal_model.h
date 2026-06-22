@@ -11,6 +11,7 @@
 #include <QString>
 #include <QFont>
 #include <QTimer>
+#include <memory>
 
 /// 终端模型 - 连接 VT 解析器、缓冲区、PTY 的核心逻辑层
 /// 不依赖任何 UI 组件, 可独立测试
@@ -137,7 +138,7 @@ private:
     VtParser parser_;
     TerminalInput input_;
     ColorPalette palette_;
-    PtyProcess* pty_ = nullptr;
+    std::unique_ptr<PtyProcess> pty_;
 
     QString windowTitle_;
     bool bellRequested_ = false;

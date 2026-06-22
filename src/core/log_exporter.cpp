@@ -24,8 +24,14 @@ bool LogExporter::exportToJson(
         return false;
     }
 
-    file.write(json.toUtf8());
+    qint64 written = file.write(json.toUtf8());
     file.close();
+
+    if (written != json.toUtf8().size()) {
+        spdlog::error("Failed to write all data to export file: {} (written {} / expected {})",
+                      filePath.toStdString(), written, json.toUtf8().size());
+        return false;
+    }
 
     spdlog::info("Exported {} entries to {}", entries.size(), filePath.toStdString());
     return true;
@@ -56,20 +62,4 @@ QString LogExporter::generateJson(
     return QString::fromUtf8(doc.toJson(QJsonDocument::Indented));
 }
 
-QString LogExporter::escapeJson(const QString& str)
-{
-    QString result;
-    for (const QChar& c : str) {
-        switch (c.unicode()) {
-        case '"':  result += "\\\""; break;
-        case '\\': result += "\\\\"; break;
-        case '\b': result += "\\b";  break;
-        case '\f': result += "\\f";  break;
-        case '\n': result += "\\n";  break;
-        case '\r': result += "\\r";  break;
-        case '\t': result += "\\t";  break;
-        default:   result += c;
-        }
-    }
-    return result;
-}
+

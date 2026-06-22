@@ -4,7 +4,6 @@ set(GUI_SOURCES
     qml/app_core.cpp
     qml/serial_tab_page.cpp
     qml/terminal_tab_page.cpp
-    qml/debug_page.cpp
     qml/terminal/terminal_model.cpp
     qml/terminal/terminal_renderer.cpp
     qml/terminal/terminal_view.cpp
@@ -17,7 +16,6 @@ set(GUI_HEADERS
     qml/app_core.h
     qml/serial_tab_page.h
     qml/terminal_tab_page.h
-    qml/debug_page.h
     qml/terminal/terminal_model.h
     qml/terminal/terminal_renderer.h
     qml/terminal/terminal_view.h
@@ -27,7 +25,7 @@ set(GUI_HEADERS
 add_executable(serial-monitor
     ${GUI_SOURCES}
     ${GUI_HEADERS}
-    ${CMAKE_SOURCE_DIR}/resources/resources.qrc
+    ${CMAKE_CURRENT_SOURCE_DIR}/resources.qrc
 )
 
 target_include_directories(serial-monitor PRIVATE
@@ -44,7 +42,6 @@ target_link_libraries(serial-monitor PRIVATE
     Qt6::Core
     Qt6::Quick
     Qt6::QuickControls2
-    Qt6::Widgets
     Qt6::SerialPort
     Qt6::Network
     Qt6::OpenGL

@@ -7,6 +7,7 @@
 #include <QTimer>
 #include <QByteArray>
 #include <QString>
+#include <atomic>
 
 struct SerialConfig {
     QString port;
@@ -16,6 +17,8 @@ struct SerialConfig {
     QSerialPort::StopBits stopbits = QSerialPort::OneStop;
     QSerialPort::FlowControl flowcontrol = QSerialPort::NoFlowControl;
 };
+
+Q_DECLARE_METATYPE(SerialConfig)
 
 class SerialEngine : public QObject {
     Q_OBJECT
@@ -41,21 +44,13 @@ signals:
     void errorOccurred(const QString& port, const QString& error);
     void dataSent(const QString& port, qint64 bytes);
 
-private slots:
-    void onReadyRead();
-    void onError(QSerialPort::SerialPortError error);
-    void tryReconnect();
-
 private:
-    QSerialPort* serial_;
-    QThread* workerThread_;
-    QTimer* reconnectTimer_;
+    QThread* workerThread_ = nullptr;
+    QObject* worker_ = nullptr;        // SerialWorker 实例（定义在 cpp 中），通过 invokeMethod 操作
     SerialConfig config_;
-    bool autoReconnect_;
-    int reconnectDelay_;
+    bool autoReconnect_ = false;
+    std::atomic<bool> isOpen_{false};
 
-    void startWorkerThread();
-    void stopWorkerThread();
     QByteArray buildAppend(const QString& append) const;
 };
 

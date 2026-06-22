@@ -27,7 +27,6 @@ TerminalModel::~TerminalModel()
 {
     if (pty_) {
         pty_->terminate();
-        delete pty_;
     }
 }
 
@@ -42,13 +41,13 @@ bool TerminalModel::startShell(const QString& program, const QStringList& args,
 {
     if (pty_) {
         pty_->terminate();
-        delete pty_;
+        pty_.reset();
     }
 
-    pty_ = PtyProcess::create(this);
-    connect(pty_, &PtyProcess::readyRead, this, &TerminalModel::onPtyReadyRead);
-    connect(pty_, &PtyProcess::finished, this, &TerminalModel::onPtyFinished);
-    connect(pty_, &PtyProcess::started, this, &TerminalModel::shellStarted);
+    pty_ = PtyProcess::create();
+    connect(pty_.get(), &PtyProcess::readyRead, this, &TerminalModel::onPtyReadyRead);
+    connect(pty_.get(), &PtyProcess::finished, this, &TerminalModel::onPtyFinished);
+    connect(pty_.get(), &PtyProcess::started, this, &TerminalModel::shellStarted);
 
     bool ok = pty_->start(program, args, cwd, env);
     if (ok) {
@@ -59,6 +58,8 @@ bool TerminalModel::startShell(const QString& program, const QStringList& args,
 
 void TerminalModel::writeToPty(const QByteArray& data)
 {
+    spdlog::debug("TerminalModel::writeToPty: size={} pty={} running={}",
+                  data.size(), (void*)pty_.get(), pty_ ? pty_->isRunning() : false);
     if (pty_ && pty_->isRunning()) {
         pty_->write(data);
         emit dataSent(data);
@@ -67,7 +68,9 @@ void TerminalModel::writeToPty(const QByteArray& data)
 
 void TerminalModel::handleKeyEvent(QKeyEvent* event)
 {
+    spdlog::debug("TerminalModel::handleKeyEvent: key={}", event->key());
     QByteArray data = input_.handleKey(event);
+    spdlog::debug("TerminalModel::handleKeyEvent: data size={}", data.size());
     if (!data.isEmpty()) {
         writeToPty(data);
     }

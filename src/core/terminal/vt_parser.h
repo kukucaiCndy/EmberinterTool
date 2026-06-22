@@ -17,7 +17,8 @@ public:
         CsiPrivate, // CSI ? (DEC 私有模式)
         Osc,        // OSC (ESC ])
         OscEnd,     // OSC 结束 (ESC \ 或 BEL)
-        Dcs,        // DCS (ESC P)
+        Dcs,        // DCS (ESC P) - 参数/中间字节收集
+        DcsData,    // DCS 数据收集 (hook 之后)
         DcsIgnore,  // DCS 忽略
         Sos,        // SOS (ESC X) - 忽略
         Pm,         // PM (ESC ^) - 忽略
@@ -110,6 +111,7 @@ private:
     uint32_t utf8Char_ = 0;
     int utf8Remaining_ = 0;
     int utf8BytesProcessed_ = 0;
+    uint32_t utf8MinCodePoint_ = 0;  // 当前序列允许的最小码点, 用于检测 overlong 编码
 
     State state_;
     EventHandler handler_;
@@ -124,6 +126,7 @@ private:
     // OSC 收集
     std::string oscBuffer_;
     int oscCommand_ = -1;
+    bool oscPendingDispatch_ = false;  // OscEnd 状态下是否需要 dispatch OSC
 
     // DCS 收集
     std::vector<int> dcsParams_;
@@ -132,6 +135,7 @@ private:
     std::string dcsBuffer_;
     int dcsCurrentParam_ = 0;
     bool dcsParamStarted_ = false;
+    char dcsFinal_ = 0;          // DCS 最终字节
 
     // ESC 收集
     std::string escIntermediates_;

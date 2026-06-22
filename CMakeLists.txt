@@ -9,12 +9,18 @@ set(CMAKE_AUTOUIC ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets SerialPort Network Quick QuickControls2)
+find_package(Qt6 REQUIRED COMPONENTS Core SerialPort Network Quick QuickControls2 OpenGL)
 message(STATUS "Using Qt6: ${Qt6_VERSION}")
 
 include(FindRapidJSON)
 
-find_path(SPDLOG_INCLUDE_DIR spdlog/spdlog.h)
+find_package(spdlog QUIET)
+if(spdlog_FOUND)
+    message(STATUS "Using spdlog: ${spdlog_VERSION}")
+else()
+    find_path(SPDLOG_INCLUDE_DIR spdlog/spdlog.h)
+    message(STATUS "spdlog not found via find_package, using header-only mode")
+endif()
 find_package(fmt REQUIRED)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
@@ -23,7 +29,7 @@ add_subdirectory(src/core)
 add_subdirectory(src/gui)
 add_subdirectory(src/cli)
 
-option(BUILD_TESTS "Build unit tests" ON)
+option(BUILD_TESTS "Build unit tests" OFF)
 if(BUILD_TESTS)
     enable_testing()
     find_package(GTest QUIET)

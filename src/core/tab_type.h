@@ -7,8 +7,6 @@ enum class TabType {
     Serial,
     SSH,
     CMD,
-    STLink,
-    JLink,
 };
 
 inline const char* tabTypeToString(TabType type)
@@ -17,19 +15,25 @@ inline const char* tabTypeToString(TabType type)
     case TabType::Serial: return "serial";
     case TabType::SSH:    return "ssh";
     case TabType::CMD:    return "cmd";
-    case TabType::STLink: return "stlink";
-    case TabType::JLink:  return "jlink";
     }
     return "unknown";
 }
 
-inline TabType tabTypeFromString(const QString& str)
+inline TabType tabTypeFromString(const QString& str, bool* ok = nullptr)
 {
-    if (str == "serial") return TabType::Serial;
-    if (str == "ssh")    return TabType::SSH;
-    if (str == "cmd")    return TabType::CMD;
-    if (str == "stlink") return TabType::STLink;
-    if (str == "jlink")  return TabType::JLink;
+    if (str == "serial") {
+        if (ok) *ok = true;
+        return TabType::Serial;
+    }
+    if (str == "ssh") {
+        if (ok) *ok = true;
+        return TabType::SSH;
+    }
+    if (str == "cmd") {
+        if (ok) *ok = true;
+        return TabType::CMD;
+    }
+    if (ok) *ok = false;
     return TabType::Serial;
 }
 
@@ -39,8 +43,6 @@ inline QString tabTypeDisplayName(TabType type)
     case TabType::Serial: return QStringLiteral("串口");
     case TabType::SSH:    return QStringLiteral("SSH");
     case TabType::CMD:    return QStringLiteral("终端");
-    case TabType::STLink: return QStringLiteral("ST-Link");
-    case TabType::JLink:  return QStringLiteral("J-Link");
     }
     return QStringLiteral("未知");
 }

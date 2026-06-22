@@ -18,7 +18,6 @@ public:
 
 private:
     LogExporter() = default;
-    static QString escapeJson(const QString& str);
 };
 
 #endif

@@ -66,6 +66,8 @@ public:
 
     // 进程管理
     Q_INVOKABLE void startShell(const QString& program, const QStringList& args = {});
+    Q_INVOKABLE void startShellWithEnv(const QString& program, const QStringList& args,
+                                       const QVariantMap& env);
     Q_INVOKABLE void writeInput(const QByteArray& data);
     Q_INVOKABLE void terminate();
     Q_INVOKABLE bool isRunning() const;
@@ -74,8 +76,6 @@ public:
     TerminalModel& model() { return model_; }
     const TerminalModel& model() const { return model_; }
 
-    /// 获取渲染器组件 (供 synchronize 使用)
-    TerminalRenderer& renderer() { return renderer_; }
     GlyphAtlas& atlas() { return atlas_; }
 
     QFont font() const { return font_; }
@@ -126,7 +126,6 @@ private:
     TerminalModel model_;
 
     // 渲染组件
-    TerminalRenderer renderer_;
     GlyphAtlas atlas_;
 
     // 字体

@@ -162,7 +162,7 @@ Popup {
                         }
                         Text {
                             Layout.alignment: Qt.AlignHCenter
-                            text: "Qt 6.10.1 | MSYS2 mingw64 | C++17"
+                            text: "Qt 6.x | MSYS2 mingw64 | C++17"
                             color: DesignSystem.textSecondary
                             font.family: DesignSystem.fontBody
                             font.pixelSize: DesignSystem.fontSizeSm
@@ -356,6 +356,9 @@ Popup {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    Qt.openUrlExternally("https://github.com/EmberInter/EmberInterDebugTool/releases")
+                                }
                             }
                         }
                     }
@@ -391,7 +394,6 @@ Popup {
     // ═══════════════════════════════════════════════
 
     component SectionTitle: Text {
-        text: parent.text
         color: DesignSystem.textPrimary
         font.family: DesignSystem.fontBody
         font.pixelSize: DesignSystem.fontSizeXl

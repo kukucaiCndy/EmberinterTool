@@ -37,9 +37,8 @@ public:
 
     void stop() {
         stopping_ = true;
-        // 取消阻塞的 ReadFile (关闭句柄)
-        // 注意: 不在这里关闭, 由主线程关闭
-        wait(3000);
+        // 注意: 不在这里调用 wait() 或关闭句柄,
+        // 由主线程关闭 hOutRead_ 解除 ReadFile 阻塞后再 wait()
     }
 
     QByteArray takeData() {
@@ -133,9 +132,9 @@ bool                       PtyProcessWin::s_apiLoaded_ = false;
 
 // ── 工厂方法 ──
 
-PtyProcess* PtyProcess::create(QObject* parent)
+std::unique_ptr<PtyProcess> PtyProcess::create(QObject* parent)
 {
-    return new PtyProcessWin(parent);
+    return std::unique_ptr<PtyProcess>(new PtyProcessWin(parent));
 }
 
 // ── 构造/析构 ──
@@ -179,6 +178,9 @@ bool PtyProcessWin::loadConPtyApi()
         spdlog::error("ConPTY API not available (requires Windows 10 1809+)");
         return false;
     }
+    if (!s_fnResize_) {
+        spdlog::warn("ConPTY: ResizePseudoConsole not available, resize() will be no-op");
+    }
     spdlog::info("ConPTY API loaded successfully");
     return true;
 }
@@ -215,6 +217,11 @@ bool PtyProcessWin::createConPtyPipes(int cols, int rows)
         return false;
     }
 
+    // CreatePseudoConsole 会复制传入的句柄，调用者负责关闭原始句柄
+    // 否则每次启动进程都会泄漏 2 个内核句柄
+    CloseHandle(hInRead);
+    CloseHandle(hOutWrite);
+
     hInWrite_  = hInWriteTmp;
     hOutRead_  = hOutReadTmp;
     return true;
@@ -226,10 +233,22 @@ void PtyProcessWin::cleanup()
 {
     running_ = false;
 
-    // 停止读取线程
+    // 1. 停止写入端, 避免向已终止的进程发送更多数据
+    if (hInWrite_ != INVALID_HANDLE_VALUE) {
+        HANDLE h = hInWrite_;
+        hInWrite_ = INVALID_HANDLE_VALUE;
+        CloseHandle(h);
+    }
+
+    // 2. 关闭伪控制台, 这会中断子进程的输入/输出
+    if (hPC_ && s_fnClose_) {
+        s_fnClose_(hPC_);
+        hPC_ = nullptr;
+    }
+
+    // 3. 请求读取线程停止, 并关闭读取端句柄解除 ReadFile 阻塞
     if (readThread_) {
         readThread_->stop();
-        // 关闭读取端句柄以解除 ReadFile 阻塞
         if (hOutRead_ != INVALID_HANDLE_VALUE) {
             HANDLE h = hOutRead_;
             hOutRead_ = INVALID_HANDLE_VALUE;
@@ -246,8 +265,12 @@ void PtyProcessWin::cleanup()
         exitTimer_ = nullptr;
     }
 
+    // 4. 如果子进程仍在运行, 强制终止
     if (hChildProcess_ != INVALID_HANDLE_VALUE) {
-        TerminateProcess(hChildProcess_, 1);
+        DWORD code = STILL_ACTIVE;
+        if (GetExitCodeProcess(hChildProcess_, &code) && code == STILL_ACTIVE) {
+            TerminateProcess(hChildProcess_, 1);
+        }
         CloseHandle(hChildProcess_);
         hChildProcess_ = INVALID_HANDLE_VALUE;
     }
@@ -255,17 +278,46 @@ void PtyProcessWin::cleanup()
         CloseHandle(hChildThread_);
         hChildThread_ = INVALID_HANDLE_VALUE;
     }
+}
 
-    if (hPC_ && s_fnClose_) {
-        s_fnClose_(hPC_);
-        hPC_ = nullptr;
+// ── 命令行参数转义 (Windows 规则) ──
+
+static QString escapeWindowsArg(const QString& arg)
+{
+    // 无特殊字符则原样返回
+    if (!arg.contains(' ') && !arg.contains('\t') &&
+        !arg.contains('"') && !arg.contains('\\')) {
+        return arg;
     }
 
-    if (hInWrite_ != INVALID_HANDLE_VALUE) {
-        CloseHandle(hInWrite_);
-        hInWrite_ = INVALID_HANDLE_VALUE;
+    // Windows 命令行转义规则:
+    // 1. 包含空格/制表符/引号的参数需用双引号包裹
+    // 2. 内部双引号需双写 ("" 转义为 "")
+    // 3. 引号前的反斜杠需双写 (\" -> \\", \\"" -> \\"")
+    // 4. 末尾反斜杠需双写
+    QString escaped;
+    int backslashes = 0;
+    for (int i = 0; i < arg.size(); ++i) {
+        QChar c = arg[i];
+        if (c == '\\') {
+            backslashes++;
+            continue;
+        }
+        if (c == '"') {
+            // 引号前的反斜杠需双写, 然后双写引号
+            escaped += QString(backslashes * 2, '\\');
+            escaped += "\"\"";
+        } else {
+            // 普通字符前的反斜杠原样输出
+            escaped += QString(backslashes, '\\');
+            escaped += c;
+        }
+        backslashes = 0;
     }
-    // hOutRead_ 已在读取线程停止时关闭
+    // 末尾反斜杠需双写 (因为后面要跟结束引号)
+    escaped += QString(backslashes * 2, '\\');
+
+    return "\"" + escaped + "\"";
 }
 
 // ── start ──
@@ -285,20 +337,18 @@ bool PtyProcessWin::start(const QString& program, const QStringList& args,
         return false;
     }
 
-    // 构建命令行
+    // 构建命令行 (使用正确的 Windows 参数转义)
     QString cmdLine = '"' + QDir::toNativeSeparators(program) + '"';
     for (const auto& arg : args) {
         cmdLine += ' ';
-        if (arg.contains(' ') || arg.contains('"'))
-            cmdLine += '"' + arg + '"';
-        else
-            cmdLine += arg;
+        cmdLine += escapeWindowsArg(arg);
     }
 
     // STARTUPINFOEX + 属性列表
+    // 注意: ConPTY 使用 PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
+    // 不要设置 STARTF_USESTDHANDLES, 否则可能导致句柄继承问题
     STARTUPINFOEXW siEx = {};
     siEx.StartupInfo.cb = sizeof(STARTUPINFOEXW);
-    siEx.StartupInfo.dwFlags |= STARTF_USESTDHANDLES;
 
     SIZE_T attrSize = 0;
     InitializeProcThreadAttributeList(nullptr, 1, 0, &attrSize);
@@ -424,14 +474,18 @@ void PtyProcessWin::checkExit()
 
 qint64 PtyProcessWin::write(const QByteArray& data)
 {
+    spdlog::debug("PtyProcessWin::write: size={} running={} hInWrite={}",
+                  data.size(), running_, (void*)hInWrite_);
     if (!running_ || hInWrite_ == INVALID_HANDLE_VALUE)
         return -1;
 
     DWORD written = 0;
     if (!WriteFile(hInWrite_, data.constData(),
                    static_cast<DWORD>(data.size()), &written, nullptr)) {
+        spdlog::error("PtyProcessWin::write: WriteFile failed, err={}", GetLastError());
         return -1;
     }
+    spdlog::debug("PtyProcessWin::write: written={}", written);
     return static_cast<qint64>(written);
 }
 
@@ -456,12 +510,27 @@ void PtyProcessWin::resize(int cols, int rows)
 
 void PtyProcessWin::terminate()
 {
-    if (hChildProcess_ != INVALID_HANDLE_VALUE) {
-        GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0);
-        if (WaitForSingleObject(hChildProcess_, 2000) == WAIT_TIMEOUT) {
-            TerminateProcess(hChildProcess_, 1);
-        }
+    if (hChildProcess_ == INVALID_HANDLE_VALUE) {
+        cleanup();
+        return;
     }
+
+    // 1. 通过 PTY 输入管道发送 Ctrl+C (ETX = 0x03)
+    //    ConPTY 会将其转换为控制台 Ctrl+C 事件
+    //    注意: GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0) 会发送到调用进程的进程组,
+    //    而非 ConPTY 子进程, 因此不能使用
+    if (hInWrite_ != INVALID_HANDLE_VALUE) {
+        const char ctrlC = '\x03';
+        DWORD written = 0;
+        WriteFile(hInWrite_, &ctrlC, 1, &written, nullptr);
+    }
+
+    // 2. 等待进程退出 (给 2 秒时间)
+    if (WaitForSingleObject(hChildProcess_, 2000) == WAIT_TIMEOUT) {
+        // 3. 超时则强制终止
+        TerminateProcess(hChildProcess_, 1);
+    }
+
     cleanup();
 }
 

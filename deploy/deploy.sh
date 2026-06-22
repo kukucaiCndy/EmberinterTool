@@ -2,7 +2,7 @@
 # emberInter 尘智串口调试工具 - 部署打包脚本
 set -e
 
-PROJECT_DIR="/f/work/software/serial-monitor"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/build"
 DEPLOY_DIR="$PROJECT_DIR/deploy/emberInter"
 DIST_DIR="$PROJECT_DIR/dist"
@@ -76,9 +76,19 @@ copy_dll_recursive "$BUILD_DIR/bin/serial-monitor-cli.exe"
 echo "=== 复制 Qt 平台插件 ==="
 cp "$MINGW_DIR/share/qt6/plugins/platforms/qwindows.dll" "$DEPLOY_DIR/platforms/"
 
+echo "=== 复制 Qt QML 插件 ==="
+if [ -d "$MINGW_DIR/share/qt6/qml" ]; then
+    cp -r "$MINGW_DIR/share/qt6/qml" "$DEPLOY_DIR/"
+fi
+
+echo "=== 复制 Qt 图像格式插件 ==="
+if [ -d "$MINGW_DIR/share/qt6/plugins/imageformats" ]; then
+    cp -r "$MINGW_DIR/share/qt6/plugins/imageformats" "$DEPLOY_DIR/"
+fi
+
 echo "=== 复制资源文件 ==="
-cp "$PROJECT_DIR/resources/styles/dark_theme.qss" "$DEPLOY_DIR/styles/"
 cp "$PROJECT_DIR/resources/icons/logo.png" "$DEPLOY_DIR/icons/"
+cp "$PROJECT_DIR/resources/icons/app.ico" "$DEPLOY_DIR/icons/"
 
 echo "=== 创建启动脚本 ==="
 cat > "$DEPLOY_DIR/emberInter.bat" << 'BAT'

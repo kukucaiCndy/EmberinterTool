@@ -124,6 +124,7 @@ Rectangle {
             Layout.fillHeight: true
             fontSize: DesignSystem.fontSizeMd
             focus: true
+            activeFocusOnTab: true
 
             Component.onCompleted: {
                 console.log("[TerminalTab] termView.Component.onCompleted: tabPage=", root.tabPage)
@@ -137,6 +138,8 @@ Rectangle {
                     termView.foregroundColor = cs.fg
                     termView.backgroundColor = cs.bg
                 }
+                // 真正获取焦点，否则键盘事件无法到达终端视图
+                termView.forceActiveFocus()
             }
         }
 
@@ -229,12 +232,4 @@ Rectangle {
         }
     }
 
-    Component.onCompleted: {
-        console.log("[TerminalTab] root.Component.onCompleted")
-        forceActiveFocus(); termView.focus = true
-        if (tabPage && termView) {
-            console.log("[TerminalTab] Component.onCompleted: defensive attachView")
-            tabPage.attachView(termView)
-        }
-    }
 }

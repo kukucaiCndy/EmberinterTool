@@ -66,7 +66,7 @@ ls build/bin/
 
 - 递归收集 EXE 和所有 DLL 的传递依赖（使用 `objdump` 分析导入表）
 - 复制 Qt 平台插件（`qwindows.dll`）
-- 复制资源文件（QSS 主题、图标）
+- 复制资源文件（图标）
 - 生成 `.bat` 启动脚本
 
 ```bash
@@ -84,8 +84,6 @@ deploy/emberInter/
 ├── platforms/
 │   └── qwindows.dll           # Qt 平台插件
 ├── imageformats/              # Qt 图片格式插件
-├── styles/
-│   └── dark_theme.qss         # 暗色主题
 ├── icons/
 │   └── logo.png                # 应用图标
 ├── emberInter.bat             # GUI 启动脚本
@@ -204,7 +202,6 @@ export https_proxy=http://127.0.0.1:7890
 | [CMakeLists.txt](CMakeLists.txt) | 顶层构建配置 |
 | [deploy/deploy.sh](deploy/deploy.sh) | 递归收集 DLL 依赖并生成部署目录 |
 | [deploy/emberInter.iss](deploy/emberInter.iss) | Inno Setup 安装脚本 |
-| [resources/styles/dark_theme.qss](resources/styles/dark_theme.qss) | 暗色主题样式 |
 | [resources/icons/logo.png](resources/icons/logo.png) | 应用图标 |
 | [PRD.md](PRD.md) | 产品需求文档 |
 | [docs/](docs/) | 设计文档（IPC 协议、架构等） |

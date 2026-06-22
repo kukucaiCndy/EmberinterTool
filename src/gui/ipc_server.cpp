@@ -1,5 +1,6 @@
 #include "ipc_server.h"
 #include "ipc_protocol.h"
+#include "serial_engine.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -78,17 +79,30 @@ void IPCServer::broadcastStatus(const QString& port, bool connected,
     }
 }
 
+int IPCServer::clientIdOf(QLocalSocket* client)
+{
+    if (!client) return -1;
+    return client->property("ipcClientId").toInt();
+}
+
 void IPCServer::sendResponse(const QString& clientId, const QString& requestId,
                               bool success, const QJsonObject& data)
 {
-    bool ok;
-    quintptr ptr = clientId.toULongLong(&ok);
+    bool ok = false;
+    int id = clientId.toInt(&ok);
     if (!ok) return;
-    QLocalSocket* client = reinterpret_cast<QLocalSocket*>(ptr);
-    if (!clients_.contains(client)) return;
+
+    QLocalSocket* target = nullptr;
+    for (auto* client : clients_) {
+        if (clientIdOf(client) == id) {
+            target = client;
+            break;
+        }
+    }
+    if (!target) return;
 
     QByteArray response = IpcProtocol::buildResponse(requestId, success, data);
-    sendToClient(client, response);
+    sendToClient(target, response);
 }
 
 int IPCServer::clientCount() const
@@ -106,12 +120,14 @@ void IPCServer::onNewConnection()
         connect(client, &QLocalSocket::disconnected, this, &IPCServer::onDisconnected);
         connect(client, &QLocalSocket::readyRead, this, &IPCServer::onReadyRead);
 
-        QString clientId = QString::number(reinterpret_cast<quintptr>(client));
+        int id = nextClientId_++;
+        client->setProperty("ipcClientId", id);
+        QString clientId = QString::number(id);
         spdlog::info("IPC client connected: {}", clientId.toStdString());
         emit clientConnected(clientId);
 
         QJsonObject welcomePayload;
-        welcomePayload["server_version"] = "2.0";
+        welcomePayload["server_version"] = "1.2.0";
         QByteArray welcome = IpcProtocol::buildMessage("welcome", welcomePayload);
         sendToClient(client, welcome);
     }
@@ -124,7 +140,7 @@ void IPCServer::onDisconnected()
 
     int index = clients_.indexOf(client);
     if (index >= 0) {
-        QString clientId = QString::number(reinterpret_cast<quintptr>(client));
+        QString clientId = QString::number(clientIdOf(client));
         spdlog::info("IPC client disconnected: {}", clientId.toStdString());
         emit clientDisconnected(clientId);
         clients_.removeAt(index);
@@ -161,7 +177,7 @@ void IPCServer::processClientData(QLocalSocket* client, int clientIndex)
         QString type = msg["type"].toString();
         QString id = msg["id"].toString();
         QJsonObject payload = msg["payload"].toObject();
-        QString clientId = QString::number(reinterpret_cast<quintptr>(client));
+        QString clientId = QString::number(clientIdOf(client));
 
         if (type == "hello" || type == "goodbye" || type == "welcome") {
             continue;

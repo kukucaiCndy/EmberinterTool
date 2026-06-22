@@ -702,16 +702,12 @@ ApplicationWindow {
                                     case 2: src = "TerminalTab.qml"; break
                                 default: src = ""; break
                                 }
-                                console.log("[main] Loader source: tabIndex=", tabIndex, "tabType=", model.tabType, "src=", src)
                                 return src
                             }
 
                             onLoaded: {
-                                console.log("[main] Loader.onLoaded: tabIndex=", tabIndex, "item=", item)
                                 if (item && item.tabPage !== undefined) {
-                                    var page = appCore.getTabPage(tabIndex)
-                                    console.log("[main] Loader.onLoaded: setting tabPage=", page, "for tabIndex=", tabIndex)
-                                    item.tabPage = page
+                                    item.tabPage = appCore.getTabPage(tabIndex)
                                 }
                             }
                         }

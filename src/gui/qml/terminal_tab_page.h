@@ -2,9 +2,9 @@
 #define QML_TERMINAL_TAB_PAGE_H
 
 #include "tab_page.h"
+#include "terminal/terminal_view.h"
 #include <QJsonObject>
-
-class TerminalView;
+#include <QPointer>
 
 /// 终端/SSH Tab 页 (纯逻辑)
 class TerminalTabPage : public TabPage {
@@ -22,7 +22,7 @@ public:
     bool isConnected() const override { return connected_; }
 
     void connectTo(const QJsonObject& params) override;
-    void disconnect() override;
+    void closeConnection() override;
 
     // 供 QML TerminalView 使用
     Q_INVOKABLE void attachView(TerminalView* view);
@@ -30,7 +30,7 @@ public:
     bool connected() const { return connected_; }
     QString shellName() const { return shellName_; }
 
-    Q_INVOKABLE void writeInput(const QByteArray& data);
+    Q_INVOKABLE void writeInput(const QString& text);
 
 signals:
     void connectedChanged();
@@ -40,7 +40,7 @@ private:
     void doConnect(const QJsonObject& params);
 
     TabType type_;
-    TerminalView* view_;
+    QPointer<TerminalView> view_;  // QPointer 防止 QML 销毁 view 后悬垂指针
     bool connected_;
     QString shellName_;
     QJsonObject pendingParams_;  // view_ 未就绪时暂存连接参数

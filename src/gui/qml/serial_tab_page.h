@@ -64,7 +64,7 @@ public:
     qint64 txBytes() const override { return txBytes_; }
 
     void connectTo(const QJsonObject& params) override;
-    void disconnect() override;
+    void closeConnection() override;
     void clearContent() override;
     void exportContent(const QString& path) override;
 
@@ -81,6 +81,7 @@ public:
     // QML 可调用方法
     Q_INVOKABLE void sendText(const QString& text, const QString& append);
     Q_INVOKABLE void sendHex(const QString& hex);
+    Q_INVOKABLE void sendRaw(const QByteArray& data);
     Q_INVOKABLE void setFilter(const QString& keyword);
     Q_INVOKABLE void setHexMode(bool enabled);
     Q_INVOKABLE void setPaused(bool p);

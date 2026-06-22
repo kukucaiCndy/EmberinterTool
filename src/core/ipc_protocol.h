@@ -7,8 +7,9 @@
 #include <QString>
 #include <QByteArray>
 #include "log_buffer.h"
-#include "serial_engine.h"
 #include "tab_type.h"
+
+struct SerialConfig;
 
 class IpcProtocol {
 public:

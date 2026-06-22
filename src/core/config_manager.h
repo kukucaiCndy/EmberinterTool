@@ -17,6 +17,7 @@ struct SavedPort {
     QSerialPort::DataBits databits = QSerialPort::Data8;
     QSerialPort::Parity parity = QSerialPort::NoParity;
     QSerialPort::StopBits stopbits = QSerialPort::OneStop;
+    QSerialPort::FlowControl flowcontrol = QSerialPort::NoFlowControl;
     QJsonObject extra;
 
     QString summary() const {
@@ -44,6 +45,7 @@ struct SavedPort {
         cfg.databits = databits;
         cfg.parity = parity;
         cfg.stopbits = stopbits;
+        cfg.flowcontrol = flowcontrol;
         return cfg;
     }
 };

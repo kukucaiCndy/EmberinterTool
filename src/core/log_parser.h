@@ -4,7 +4,6 @@
 #include <QString>
 #include <QStringList>
 #include <QByteArray>
-#include <QColor>
 #include "log_buffer.h"
 
 class LogParser {
@@ -19,7 +18,6 @@ public:
 
     static QString formatHex(const QByteArray& data, int baseOffset = 0);
 
-    static QColor levelColor(const QString& level);
     static QString levelColorHex(const QString& level);
 
 private:

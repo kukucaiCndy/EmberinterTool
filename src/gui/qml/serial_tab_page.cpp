@@ -122,7 +122,8 @@ SerialTabPage::SerialTabPage(QObject* parent)
 
 SerialTabPage::~SerialTabPage()
 {
-    disconnect();
+    // 析构时直接关闭引擎，不发信号（避免析构期间信号触发未定义行为）
+    engine_.close();
 }
 
 QString SerialTabPage::tabTitle() const
@@ -149,7 +150,7 @@ void SerialTabPage::connectTo(const QJsonObject& params)
     spdlog::info("SerialTabPage: connecting to {}", portName_.toStdString());
 }
 
-void SerialTabPage::disconnect()
+void SerialTabPage::closeConnection()
 {
     flushPending();
     engine_.close();
@@ -221,6 +222,15 @@ void SerialTabPage::sendHex(const QString& hex)
     if (!connected_) return;
 
     QByteArray data = QByteArray::fromHex(hex.toUtf8().replace(' ', ""));
+    qint64 sent = engine_.sendRaw(data);
+    txBytes_ += sent;
+    emit txBytesChanged(txBytes_);
+}
+
+void SerialTabPage::sendRaw(const QByteArray& data)
+{
+    if (!connected_) return;
+
     qint64 sent = engine_.sendRaw(data);
     txBytes_ += sent;
     emit txBytesChanged(txBytes_);

@@ -11,6 +11,12 @@
 #include <QTimer>
 #include <QRegularExpression>
 #include <iostream>
+#include <cstdio>
+#ifdef Q_OS_WIN
+#  include <io.h>
+#else
+#  include <unistd.h>
+#endif
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
@@ -60,17 +66,17 @@ int CLIApp::run(int argc, char* argv[])
     QCoreApplication app(argc, argv);
     app_ = &app;
     app.setApplicationName("EmberInterDebugTool-cli");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion("1.2.0");
 
     QCommandLineParser parser;
     parser.setApplicationDescription("EmberInterDebugTool - 尘智串口调试工具 CLI");
     parser.addHelpOption();
     parser.addVersionOption();
 
-    parser.addOption(QCommandLineOption("p", "串口名称", "PORT"));
-    parser.addOption(QCommandLineOption("b", "波特率 (默认: 115200)", "RATE", "115200"));
-    parser.addOption(QCommandLineOption("f", "过滤关键词", "KEYWORD"));
-    parser.addOption(QCommandLineOption("o", "保存日志到文件", "FILE"));
+    parser.addOption(QCommandLineOption(QStringList({"p", "port"}), "串口名称", "PORT"));
+    parser.addOption(QCommandLineOption(QStringList({"b", "baudrate"}), "波特率 (默认: 115200)", "RATE", "115200"));
+    parser.addOption(QCommandLineOption(QStringList({"f", "filter"}), "过滤关键词", "KEYWORD"));
+    parser.addOption(QCommandLineOption(QStringList({"o", "output"}), "保存日志到文件", "FILE"));
     parser.addOption(QCommandLineOption("hex", "HEX显示模式"));
     parser.addOption(QCommandLineOption("no-timestamp", "不显示时间戳"));
     parser.addOption(QCommandLineOption("clear", "启动时清空日志"));
@@ -82,15 +88,13 @@ int CLIApp::run(int argc, char* argv[])
     parser.addOption(QCommandLineOption("send-hex", "发送HEX数据后退出", "HEX"));
     parser.addOption(QCommandLineOption("send-file", "发送二进制文件后退出", "FILE"));
     parser.addOption(QCommandLineOption("connect", "连接串口", "PORT"));
-    parser.addOption(QCommandLineOption("baudrate", "--connect的波特率", "RATE", "115200"));
     parser.addOption(QCommandLineOption("get-logs", "获取最近N条日志", "COUNT"));
     parser.addOption(QCommandLineOption("get-status", "获取连接状态"));
+    parser.addOption(QCommandLineOption("pause", "暂停日志输出"));
+    parser.addOption(QCommandLineOption("resume", "恢复日志输出"));
+    parser.addOption(QCommandLineOption("activate-window", "激活 GUI 窗口"));
 
     parser.process(app);
-
-    if (parser.isSet("help") || parser.isSet("version")) {
-        return 0;
-    }
 
     jsonMode_ = parser.isSet("json");
     hexMode_ = parser.isSet("hex");
@@ -98,12 +102,15 @@ int CLIApp::run(int argc, char* argv[])
     filter_ = parser.value("f");
     outputFile_ = parser.value("o");
     ipcName_ = parser.value("ipc");
+    listenPort_ = parser.value("p");
 
     bool needsIpc = parser.isSet("list") || parser.isSet("get-status") ||
                     parser.isSet("get-logs") || parser.isSet("send") ||
                     parser.isSet("send-hex") ||
                     parser.isSet("send-file") ||
                     parser.isSet("connect") || parser.isSet("cli") ||
+                    parser.isSet("pause") || parser.isSet("resume") ||
+                    parser.isSet("activate-window") ||
                     !parser.value("p").isEmpty();
 
     if (!needsIpc) {
@@ -118,7 +125,12 @@ int CLIApp::run(int argc, char* argv[])
         return 2;
     }
 
-    QTimer::singleShot(500, [this]() {
+    if (parser.isSet("clear")) {
+        ipc_->sendCommand("clear_logs", QJsonObject());
+    }
+
+    // 非交互命令最多等待 5 秒响应, 避免响应延迟时提前退出
+    QTimer::singleShot(5000, [this]() {
         if (pendingRequestCount_ == 0 && !interactiveMode_) {
             shouldQuit_ = true;
             QCoreApplication::quit();
@@ -140,7 +152,13 @@ int CLIApp::run(int argc, char* argv[])
     }
 
     else if (parser.isSet("get-logs")) {
-        int count = parser.value("get-logs").toInt();
+        bool ok = false;
+        int count = parser.value("get-logs").toInt(&ok);
+        if (!ok || count <= 0) {
+            QTextStream err(stderr);
+            err << "错误: --get-logs 需要正整数参数" << Qt::endl;
+            return 1;
+        }
         QJsonObject params;
         params["count"] = count;
         params["filter"] = parser.value("f");
@@ -183,6 +201,12 @@ int CLIApp::run(int argc, char* argv[])
     else if (parser.isSet("send-hex")) {
         QString hexStr = parser.value("send-hex");
         hexStr.remove(QRegularExpression("\\s"));
+        static const QRegularExpression hexRe("^[0-9A-Fa-f]+$");
+        if (hexStr.isEmpty() || hexStr.length() % 2 != 0 || !hexRe.match(hexStr).hasMatch()) {
+            QTextStream err(stderr);
+            err << "错误: --send-hex 参数必须是偶数长度的十六进制字符串" << Qt::endl;
+            return 1;
+        }
         QJsonObject params;
         params["data"] = hexStr;
         params["port"] = parser.value("p");
@@ -193,13 +217,34 @@ int CLIApp::run(int argc, char* argv[])
 
     else if (parser.isSet("connect")) {
         QString port = parser.value("connect");
-        int baud = parser.value("baudrate").toInt();
+        bool ok = false;
+        int baud = parser.value("baudrate").toInt(&ok);
+        if (!ok || baud <= 0) {
+            QTextStream err(stderr);
+            err << "错误: --baudrate 需要正整数参数" << Qt::endl;
+            return 1;
+        }
         QJsonObject params;
         params["port"] = port;
         params["baudrate"] = baud;
         QString reqId = nextReqId();
         addPending();
         ipc_->sendCommand("connect", params, reqId);
+    }
+
+    else if (parser.isSet("pause")) {
+        addPending();
+        ipc_->sendCommand("pause", QJsonObject(), nextReqId());
+    }
+
+    else if (parser.isSet("resume")) {
+        addPending();
+        ipc_->sendCommand("resume", QJsonObject(), nextReqId());
+    }
+
+    else if (parser.isSet("activate-window")) {
+        addPending();
+        ipc_->sendCommand("activate_window", QJsonObject(), nextReqId());
     }
 
     else if (parser.isSet("cli")) {
@@ -209,7 +254,7 @@ int CLIApp::run(int argc, char* argv[])
             out << "错误: --cli 需要 --port 参数" << Qt::endl;
             return 1;
         }
-        QTimer::singleShot(0, [this, port]() { runInteractive(port); });
+        QTimer::singleShot(0, [this, port]() { startInteractive(port); });
         return app.exec();
     }
 
@@ -255,31 +300,74 @@ QString CLIApp::nextReqId()
     return QString("req_%1").arg(++reqCounter_);
 }
 
-int CLIApp::runInteractive(const QString& port)
+int CLIApp::startInteractive(const QString& port)
 {
     interactiveMode_ = true;
 
     QTextStream out(stdout);
     out << COLOR_CYAN << QString(60, '=') << COLOR_RESET << Qt::endl;
-    out << COLOR_CYAN << "  EmberInterDebugTool v1.0.0 - 尘智 | 微尘藏星火,终端蕴尘智" << COLOR_RESET << Qt::endl;
+    out << COLOR_CYAN << "  EmberInterDebugTool v1.2.0 - 尘智 | 微尘藏星火,终端蕴尘智" << COLOR_RESET << Qt::endl;
     out << COLOR_GRAY << "  Port: " << port << COLOR_RESET << Qt::endl;
     out << COLOR_CYAN << QString(60, '=') << COLOR_RESET << Qt::endl;
     out << Qt::endl;
     out << COLOR_GREEN << "[系统] 输入 'help' 查看命令, 'quit' 退出"
         << COLOR_RESET << Qt::endl << Qt::endl;
+    out << "> " << Qt::flush;
 
-    QTextStream in(stdin);
-    while (true) {
-        out << "> " << Qt::flush;
-        QString cmd = in.readLine().trimmed();
-        if (cmd.isEmpty()) continue;
-        if (cmd == "q" || cmd == "quit" || cmd == "exit") break;
+    // 使用 QSocketNotifier 异步读取 stdin，避免阻塞 Qt 事件循环
+    // 这样 IPC 信号 (logReceived/statusChanged/responseReceived) 才能被处理
+    stdinNotifier_ = new QSocketNotifier(fileno(stdin), QSocketNotifier::Read, this);
+    connect(stdinNotifier_, &QSocketNotifier::activated,
+            this, &CLIApp::onStdinActivated);
+    stdinNotifier_->setEnabled(true);
+    return 0;
+}
+
+void CLIApp::onStdinActivated()
+{
+    char buf[4096];
+    ssize_t n = ::read(fileno(stdin), buf, sizeof(buf));
+    if (n <= 0) {
+        // EOF 或错误：停止通知并退出
+        if (stdinNotifier_) {
+            stdinNotifier_->setEnabled(false);
+        }
+        if (app_) {
+            QCoreApplication::quit();
+        }
+        return;
+    }
+
+    stdinBuffer_.append(buf, n);
+
+    // 处理缓冲区中所有完整行
+    int idx;
+    while ((idx = stdinBuffer_.indexOf('\n')) >= 0) {
+        QByteArray line = stdinBuffer_.left(idx);
+        stdinBuffer_.remove(0, idx + 1);
+        QString cmd = QString::fromLocal8Bit(line).trimmed();
+        if (cmd.isEmpty()) {
+            QTextStream out(stdout);
+            out << "> " << Qt::flush;
+            continue;
+        }
+        if (cmd == "q" || cmd == "quit" || cmd == "exit") {
+            if (stdinNotifier_) {
+                stdinNotifier_->setEnabled(false);
+            }
+            QTextStream out(stdout);
+            out << COLOR_GRAY << "[SYSTEM] CLI disconnected (GUI service continues)"
+                << COLOR_RESET << Qt::endl;
+            if (app_) {
+                QCoreApplication::quit();
+            }
+            return;
+        }
         handleCommand(cmd);
     }
 
-    out << COLOR_GRAY << "[SYSTEM] CLI disconnected (GUI service continues)"
-        << COLOR_RESET << Qt::endl;
-    return 0;
+    QTextStream out(stdout);
+    out << "> " << Qt::flush;
 }
 
 void CLIApp::handleCommand(const QString& cmd)
@@ -396,6 +484,11 @@ void CLIApp::onLogReceived(const QJsonObject& log)
     QTextStream out(stdout);
     QString text = log["text"].toString();
     QString level = log["level"].toString();
+    QString port = log["port"].toString();
+
+    if (!listenPort_.isEmpty() && port != listenPort_) {
+        return;
+    }
 
     if (!filter_.isEmpty() && !text.contains(filter_, Qt::CaseInsensitive)) {
         return;
@@ -515,7 +608,7 @@ void CLIApp::printHelp() const
 {
     QTextStream out(stdout);
     out << Qt::endl;
-    out << "EmberInterDebugTool CLI v1.0.0" << Qt::endl;
+    out << "EmberInterDebugTool CLI v1.2.0" << Qt::endl;
     out << Qt::endl;
     out << "会话管理:" << Qt::endl;
     out << "  connect <port> [baud] - 连接串口" << Qt::endl;
@@ -547,7 +640,7 @@ void CLIApp::printHelp() const
 void CLIApp::printUsage() const
 {
     QTextStream out(stdout);
-    out << "EmberInterDebugTool v1.0.0 - 尘智 | 微尘藏星火,终端蕴尘智" << Qt::endl << Qt::endl;
+    out << "EmberInterDebugTool v1.2.0 - 尘智 | 微尘藏星火,终端蕴尘智" << Qt::endl << Qt::endl;
     out << "用法: EmberInterDebugTool-cli [选项]" << Qt::endl << Qt::endl;
     out << "监听模式 (需先启动GUI):" << Qt::endl;
     out << "  -p, --port PORT       指定串口, 实时接收日志 (需先通过GUI连接该串口)" << Qt::endl;
@@ -569,6 +662,9 @@ void CLIApp::printUsage() const
     out << "  --list                列出可用串口设备" << Qt::endl;
     out << "  --get-status          显示当前连接状态" << Qt::endl;
     out << "  --get-logs N          获取最近N条日志" << Qt::endl;
+    out << "  --pause               暂停日志输出" << Qt::endl;
+    out << "  --resume              恢复日志输出" << Qt::endl;
+    out << "  --activate-window     激活 GUI 窗口" << Qt::endl;
     out << Qt::endl;
     out << "帮助:" << Qt::endl;
     out << "  -h, --help            显示此帮助信息" << Qt::endl;

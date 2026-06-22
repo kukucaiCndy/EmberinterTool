@@ -253,7 +253,9 @@ Popup {
                                 font.family: DesignSystem.fontBody; font.pixelSize: DesignSystem.fontSizeLg
                                 verticalAlignment: Text.AlignVCenter
                             }
-                            onCurrentTextChanged: { root.wizardStopBits = parseInt(currentText) || 1 }
+                            // Qt6 QSerialPort::StopBits: OneStop=1, OneAndHalfStop=2, TwoStop=3
+                            // parseInt("1.5") 返回 1 会导致 1.5 停止位错误, 使用索引映射
+                            onCurrentIndexChanged: { root.wizardStopBits = currentIndex + 1 }
                         }
                     }
                 }

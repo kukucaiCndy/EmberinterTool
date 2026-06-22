@@ -42,6 +42,9 @@ private:
     QLocalServer* server_;
     QVector<QLocalSocket*> clients_;
     QVector<QByteArray> readBuffers_;
+    int nextClientId_ = 1;
+
+    static int clientIdOf(QLocalSocket* client);
 
     void sendToClient(QLocalSocket* client, const QByteArray& message);
     void processClientData(QLocalSocket* client, int clientIndex);

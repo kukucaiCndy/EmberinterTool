@@ -105,7 +105,12 @@ Rectangle {
                 // 导出
                 ToolBtn {
                     text: DesignSystem.iconExport; tooltip: "导出日志 JSON"
-                    onClicked: { if (root.tabPage) root.tabPage.exportLogs("export.json") }
+                    onClicked: {
+                        if (root.tabPage) {
+                            var filename = "export_" + Qt.formatDateTime(new Date(), "yyyyMMdd_hhmmss") + ".json"
+                            root.tabPage.exportLogs(filename)
+                        }
+                    }
                 }
 
                 Item { Layout.fillWidth: true }
@@ -170,7 +175,7 @@ Rectangle {
                 Rectangle {
                     anchors.fill: parent
                     color: {
-                        var idx = model.index % 2
+                        var idx = index % 2
                         return idx === 0 ? "transparent" : "#FFFFFF04"
                     }
                 }

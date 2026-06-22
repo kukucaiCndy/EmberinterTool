@@ -26,14 +26,17 @@ static const char* textVertexShader = R"(
 attribute vec2 aPosition;
 attribute vec2 aTexCoord;
 attribute vec4 aFgColor;
+attribute float aEmoji;
 uniform vec2 uResolution;
 varying vec2 vTexCoord;
 varying vec4 vFgColor;
+varying float vEmoji;
 void main() {
     vec2 clip = (aPosition / uResolution) * 2.0 - 1.0;
     gl_Position = vec4(clip.x, clip.y, 0.0, 1.0);
     vTexCoord = aTexCoord;
     vFgColor = aFgColor;
+    vEmoji = aEmoji;
 }
 )";
 
@@ -41,9 +44,14 @@ static const char* textFragmentShader = R"(
 uniform sampler2D uAtlas;
 varying vec2 vTexCoord;
 varying vec4 vFgColor;
+varying float vEmoji;
 void main() {
-    float alpha = texture2D(uAtlas, vTexCoord).a;
-    gl_FragColor = vec4(vFgColor.rgb, vFgColor.a * alpha);
+    vec4 tex = texture2D(uAtlas, vTexCoord);
+    if (vEmoji > 0.5) {
+        gl_FragColor = tex;
+    } else {
+        gl_FragColor = vec4(vFgColor.rgb, vFgColor.a * tex.a);
+    }
 }
 )";
 
@@ -242,14 +250,15 @@ void TerminalRenderer::buildTextVertices(const TerminalSnapshot& snapshot)
             float h = ch;
 
             uint32_t fg = cell.fgColor;
+            float isEmoji = cell.emoji ? 1.0f : 0.0f;
 
             // 使用预计算的纹理坐标
-            Vertex v0 = {x,     y,     cell.u0, cell.v0, fg, 0};
-            Vertex v1 = {x + w, y,     cell.u1, cell.v0, fg, 0};
-            Vertex v2 = {x,     y + h, cell.u0, cell.v1, fg, 0};
-            Vertex v3 = {x + w, y,     cell.u1, cell.v0, fg, 0};
-            Vertex v4 = {x + w, y + h, cell.u1, cell.v1, fg, 0};
-            Vertex v5 = {x,     y + h, cell.u0, cell.v1, fg, 0};
+            Vertex v0 = {x,     y,     cell.u0, cell.v0, fg, isEmoji};
+            Vertex v1 = {x + w, y,     cell.u1, cell.v0, fg, isEmoji};
+            Vertex v2 = {x,     y + h, cell.u0, cell.v1, fg, isEmoji};
+            Vertex v3 = {x + w, y,     cell.u1, cell.v0, fg, isEmoji};
+            Vertex v4 = {x + w, y + h, cell.u1, cell.v1, fg, isEmoji};
+            Vertex v5 = {x,     y + h, cell.u0, cell.v1, fg, isEmoji};
 
             textVertices_.push_back(v0);
             textVertices_.push_back(v1);
@@ -353,13 +362,15 @@ void TerminalRenderer::drawTextBatch(QOpenGLFunctions* gl, int viewportWidth, in
     vbo_.bind();
     vbo_.allocate(textVertices_.data(), textVertices_.size() * sizeof(Vertex));
 
-    int posLoc = textProgram_->attributeLocation("aPosition");
-    int texLoc = textProgram_->attributeLocation("aTexCoord");
-    int fgLoc  = textProgram_->attributeLocation("aFgColor");
+    int posLoc   = textProgram_->attributeLocation("aPosition");
+    int texLoc   = textProgram_->attributeLocation("aTexCoord");
+    int fgLoc    = textProgram_->attributeLocation("aFgColor");
+    int emojiLoc = textProgram_->attributeLocation("aEmoji");
 
     gl->glEnableVertexAttribArray(posLoc);
     gl->glEnableVertexAttribArray(texLoc);
     gl->glEnableVertexAttribArray(fgLoc);
+    gl->glEnableVertexAttribArray(emojiLoc);
 
     gl->glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
                                reinterpret_cast<void*>(offsetof(Vertex, x)));
@@ -367,12 +378,15 @@ void TerminalRenderer::drawTextBatch(QOpenGLFunctions* gl, int viewportWidth, in
                                reinterpret_cast<void*>(offsetof(Vertex, u)));
     gl->glVertexAttribPointer(fgLoc, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(Vertex),
                                reinterpret_cast<void*>(offsetof(Vertex, color)));
+    gl->glVertexAttribPointer(emojiLoc, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                               reinterpret_cast<void*>(offsetof(Vertex, emoji)));
 
     gl->glDrawArrays(GL_TRIANGLES, 0, textVertices_.size());
 
     gl->glDisableVertexAttribArray(posLoc);
     gl->glDisableVertexAttribArray(texLoc);
     gl->glDisableVertexAttribArray(fgLoc);
+    gl->glDisableVertexAttribArray(emojiLoc);
 
     vbo_.release();
     textProgram_->release();

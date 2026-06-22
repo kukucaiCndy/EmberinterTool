@@ -39,6 +39,7 @@ void IPCClient::disconnect()
         QByteArray msg = IpcProtocol::buildMessage("goodbye", params);
         socket_->write(msg);
         socket_->flush();
+        socket_->waitForBytesWritten(1000);
         socket_->disconnectFromServer();
     }
 }

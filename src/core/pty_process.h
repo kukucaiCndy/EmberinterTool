@@ -6,6 +6,7 @@
 #include <QString>
 #include <QStringList>
 #include <QProcessEnvironment>
+#include <memory>
 
 /// 跨平台 PTY 进程抽象基类
 /// 统一 Windows ConPTY 和 Unix PTY 的接口
@@ -17,7 +18,7 @@ public:
     Q_ENUM(Error)
 
     /// 工厂方法：根据平台创建具体实现
-    static PtyProcess* create(QObject* parent = nullptr);
+    static std::unique_ptr<PtyProcess> create(QObject* parent = nullptr);
 
     explicit PtyProcess(QObject* parent = nullptr) : QObject(parent) {}
     virtual ~PtyProcess() = default;

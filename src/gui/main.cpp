@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QDir>
+#include <QIcon>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -14,8 +15,21 @@
 #include "qml/app_core.h"
 #include "qml/terminal/terminal_view.h"
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
 int main(int argc, char* argv[])
 {
+#ifdef Q_OS_WIN
+    // 释放继承的控制台，避免 ConPTY 子进程受到父进程控制台（如 MSYS2 pty）的干扰
+    FreeConsole();
+    // 清除继承的标准句柄，防止 MSYS2 pty 句柄影响 ConPTY 子进程
+    SetStdHandle(STD_INPUT_HANDLE, INVALID_HANDLE_VALUE);
+    SetStdHandle(STD_OUTPUT_HANDLE, INVALID_HANDLE_VALUE);
+    SetStdHandle(STD_ERROR_HANDLE, INVALID_HANDLE_VALUE);
+#endif
+
     // ── 单实例检查 ──────────────────────────────────────
     ConfigManager::instance().load();
     QString ipcName = ConfigManager::instance().config().ipcName;
@@ -25,15 +39,17 @@ int main(int argc, char* argv[])
     if (!singleLock.listen("emberinter_instance_lock")) {
         QLocalSocket sock;
         sock.connectToServer(ipcName);
-        if (sock.waitForConnected(2000)) {
-            QJsonObject msg;
-            msg["type"] = "activate_window";
-            QJsonDocument doc(msg);
-            QByteArray data = doc.toJson(QJsonDocument::Compact) + "\n";
-            sock.write(data);
-            sock.waitForBytesWritten(1000);
-            sock.disconnectFromServer();
+        if (!sock.waitForConnected(2000)) {
+            return 0;
         }
+
+        QJsonObject msg;
+        msg["type"] = "activate_window";
+        QJsonDocument doc(msg);
+        QByteArray data = doc.toJson(QJsonDocument::Compact) + "\n";
+        sock.write(data);
+        sock.waitForBytesWritten(1000);
+        sock.disconnectFromServer();
         return 0;
     }
 
@@ -48,6 +64,25 @@ int main(int argc, char* argv[])
     spdlog::flush_on(spdlog::level::debug);
     spdlog::info("EmberInterDebugTool GUI starting");
 
+    // 捕获所有 Qt 消息 (包括 QGuiApplication 构造期间的警告)
+    qInstallMessageHandler([](QtMsgType type, const QMessageLogContext& ctx,
+                               const QString& msg) {
+        if (type == QtDebugMsg)
+            spdlog::debug("Qt: {}", msg.toStdString());
+        else if (type == QtInfoMsg)
+            spdlog::info("Qt: {}", msg.toStdString());
+        else if (type == QtWarningMsg) {
+            std::string loc = ctx.file ? (std::string(ctx.file) + ":" +
+                std::to_string(ctx.line)) : "";
+            spdlog::warn("Qt [{}]: {}", loc, msg.toStdString());
+        } else if (type == QtCriticalMsg || type == QtFatalMsg) {
+            std::string loc = ctx.file ? (std::string(ctx.file) + ":" +
+                std::to_string(ctx.line)) : "";
+            spdlog::error("Qt [{}/{}]: {}", loc, ctx.function ? ctx.function : "",
+                          msg.toStdString());
+        }
+    });
+
     // 强制使用 OpenGL RHI 后端 (QQuickFramebufferObject + QOpenGLFunctions 需要)
     // Qt6 默认在 Windows 上使用 D3D11, 会导致 OpenGL FBO 渲染静默失败
     // 必须在 QGuiApplication 构造之前设置!
@@ -57,12 +92,17 @@ int main(int argc, char* argv[])
     app.setApplicationName("EmberInterDebugTool");
     app.setApplicationVersion("1.2.0");
     app.setOrganizationName("EmberInter");
+    app.setWindowIcon(QIcon(":/icons/app.ico"));
 
     // 注册自定义 QML 类型
     qmlRegisterType<TerminalView>("EmberInter", 1, 0, "TerminalView");
 
     // 强制使用 Fusion 样式，避免原生样式不支持自定义控件
     QQuickStyle::setStyle("Fusion");
+
+    // AppCore 必须在 QQmlApplicationEngine 之前构造、之后销毁，
+    // 否则程序退出时 QML 对象仍持有对 appCore 的绑定，访问已销毁对象会产生 TypeError。
+    AppCore appCore;
 
     QQmlApplicationEngine engine;
 
@@ -108,29 +148,9 @@ int main(int argc, char* argv[])
             engine.addImportPath(emberFs);
     }
 
-    AppCore appCore;
     appCore.init(&engine);
 
     engine.rootContext()->setContextProperty("appCore", &appCore);
-
-    // 捕获所有 Qt 消息 (包括 QML 错误)
-    qInstallMessageHandler([](QtMsgType type, const QMessageLogContext& ctx,
-                               const QString& msg) {
-        if (type == QtDebugMsg)
-            spdlog::debug("Qt: {}", msg.toStdString());
-        else if (type == QtInfoMsg)
-            spdlog::info("Qt: {}", msg.toStdString());
-        else if (type == QtWarningMsg) {
-            std::string loc = ctx.file ? (std::string(ctx.file) + ":" +
-                std::to_string(ctx.line)) : "";
-            spdlog::warn("Qt [{}]: {}", loc, msg.toStdString());
-        } else if (type == QtCriticalMsg || type == QtFatalMsg) {
-            std::string loc = ctx.file ? (std::string(ctx.file) + ":" +
-                std::to_string(ctx.line)) : "";
-            spdlog::error("Qt [{}/{}]: {}", loc, ctx.function ? ctx.function : "",
-                          msg.toStdString());
-        }
-    });
 
     engine.load(useQrc ? QUrl(qmlMainPath) : QUrl::fromLocalFile(qmlMainPath));
 

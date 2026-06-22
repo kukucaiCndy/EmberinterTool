@@ -1,0 +1,19 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="icons/logo.png">../../resources/icons/logo.png</file>
+        <file alias="icons/app.ico">../../resources/icons/app.ico</file>
+        <file alias="icons/close.svg">../../resources/icons/close.svg</file>
+    </qresource>
+    <qresource prefix="/qml">
+        <file alias="main.qml">qml/main.qml</file>
+        <file alias="SerialTab.qml">qml/SerialTab.qml</file>
+        <file alias="TerminalTab.qml">qml/TerminalTab.qml</file>
+        <file alias="ConnectionWizard.qml">qml/ConnectionWizard.qml</file>
+        <file alias="SettingsDialog.qml">qml/SettingsDialog.qml</file>
+        <file alias="AboutDialog.qml">qml/AboutDialog.qml</file>
+    </qresource>
+    <qresource prefix="/EmberDesign">
+        <file alias="DesignSystem.qml">qml/EmberDesign/DesignSystem.qml</file>
+        <file alias="qmldir">qml/EmberDesign/qmldir</file>
+    </qresource>
+</RCC>

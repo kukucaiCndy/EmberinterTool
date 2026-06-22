@@ -2,7 +2,7 @@
 
 > 微尘藏星火，终端蕴尘智
 
-基于 Qt5 的跨平台串口监控调试工具，提供 GUI 图形界面和 CLI 命令行两种使用方式，两者通过 IPC 实时联动。
+基于 Qt6 QML 的跨平台串口监控调试工具，提供 GUI 图形界面和 CLI 命令行两种使用方式，两者通过 IPC 实时联动。
 
 ## 特性
 
@@ -13,17 +13,19 @@
 - 🔍 **实时筛选** - 支持关键字过滤
 - 💾 **大缓冲区** - 10000 行日志缓存，防止丢失关键信息
 - 🔄 **自动重连** - 串口断开后自动重试
-- 🌙 **暗色主题** - 默认暗色 QSS 主题，保护眼睛
+- 🌙 **暗色主题** - 基于 QML Design System 的暗色主题，保护眼睛
 - 📡 **IPC 实时通信** - CLI 和 GUI 通过 QLocalSocket 实时同步状态
+- 🖥️ **多终端支持** - 串口终端、本地命令行终端 (cmd/bash/powershell)、SSH 远程终端
 
 ## 系统要求
 
 ### 编译依赖
 
 - CMake >= 3.16
-- Qt5 (Widgets, SerialPort, Network)
+- Qt6 (QML/QtQuick, SerialPort, Network, OpenGL)
 - MinGW64 / MSVC (Windows) 或 GCC/Clang (Linux/macOS)
 - spdlog (日志库)
+- fmt (格式化库)
 - RapidJSON (JSON 解析)
 
 ### 运行环境
@@ -248,12 +250,12 @@ $ ./serial-monitor-cli -p COM3 --cli
 
 ```
 ┌─────────────────────────────────────────────┐
-│                  GUI (Qt5)                   │
+│                  GUI (Qt6 QML)               │
 │  ┌──────────┐  ┌─────────────────────────┐  │
-│  │ 会话列表  │  │     标签页 (LogView)     │  │
+│  │ 会话列表  │  │     标签页 (QML)         │  │
 │  │          │  │  ┌─────────────────────┐ │  │
-│  │ Session1 │  │  │  彩色日志 (QPlainTxt) │  │  │
-│  │ Session2 │  │  │  TX绿 RX彩色         │  │  │
+│  │ Session1 │  │  │  TerminalView (FBO)  │ │  │
+│  │ Session2 │  │  │  彩色日志/终端渲染    │ │  │
 │  │   ...    │  │  └─────────────────────┘ │  │
 │  │          │  │  ┌─────────────────────┐ │  │
 │  │  [+]-+   │  │  │  发送面板            │ │  │
@@ -265,7 +267,7 @@ $ ./serial-monitor-cli -p COM3 --cli
 └─────────────────┼───────────────────────────┘
                   │ QLocalSocket
 ┌─────────────────┼───────────────────────────┐
-│  CLI (Qt5)      │                            │
+│  CLI (Qt6)      │                            │
 │  ┌──────────────┴───────────────────────┐   │
 │  │      IPC Client (QLocalSocket)       │   │
 │  │   logReceived / statusChanged / ...  │   │
@@ -273,9 +275,11 @@ $ ./serial-monitor-cli -p COM3 --cli
 └─────────────────────────────────────────────┘
 ```
 
-- **GUI** 负责串口连接、数据收发、日志显示
+- **GUI** 负责串口连接、数据收发、日志显示、终端渲染
 - **CLI** 通过 IPC 向 GUI 发送命令，并接收实时日志流
-- **SerialEngine** 封装 QSerialPort，提供统一的串口操作接口
+- **SerialEngine** 封装 QSerialPort，提供线程安全的串口操作接口
+- **TerminalView** 基于 QQuickFramebufferObject 的终端渲染控件，支持 VT100/ANSI 转义序列
+- **PtyProcess** 跨平台 PTY 抽象 (Windows ConPTY / Unix PTY)，支持本地终端和 SSH
 - **LogBuffer** 环形缓冲区，缓存最近 10000 条日志
 - **ConfigManager** JSON 配置持久化（会话列表、窗口状态等）
 
@@ -284,29 +288,36 @@ $ ./serial-monitor-cli -p COM3 --cli
 ```
 serial-monitor/
 ├── src/
-│   ├── core/               # 核心库
-│   │   ├── serial_engine   # 串口引擎
-│   │   ├── log_buffer      # 日志缓冲区
-│   │   ├── log_parser      # 日志解析/格式化
-│   │   ├── log_exporter    # 日志导出
-│   │   ├── config_manager  # 配置管理
-│   │   └── ipc_protocol    # IPC 协议定义
-│   ├── gui/                # GUI 模块
-│   │   ├── main_window     # 主窗口
-│   │   ├── log_view        # 日志视图
-│   │   ├── send_panel      # 发送面板
-│   │   ├── status_bar      # 状态栏
-│   │   ├── serial_port_dialog  # 串口配置对话框
-│   │   ├── serial_tab_widget   # 标签页组件
-│   │   └── ipc_server      # IPC 服务端
+│   ├── core/               # 核心静态库 (serialmonitor_core)
+│   │   ├── serial_engine   # 串口通信引擎 (线程安全, worker 模式)
+│   │   ├── log_buffer      # 线程安全日志环形缓冲
+│   │   ├── log_parser      # 日志解析/行拆分/HEX格式化
+│   │   ├── log_exporter    # JSON日志导出
+│   │   ├── config_manager  # JSON配置读写
+│   │   ├── ipc_protocol    # IPC消息协议
+│   │   ├── pty_process     # ConPTY/PTY 跨平台抽象
+│   │   └── terminal/       # 终端核心 (VT解析器/缓冲区/输入处理)
+│   ├── gui/                # GUI 模块 (QML 驱动)
+│   │   ├── main.cpp        # 入口: QGuiApplication + QQmlApplicationEngine
+│   │   ├── ipc_server      # IPC 服务端
+│   │   └── qml/            # QML UI + C++ 逻辑
+│   │       ├── app_core    # AppCore 主逻辑 (TabModel, SavedPortModel)
+│   │       ├── tab_page    # TabPage 抽象基类
+│   │       ├── serial_tab_page  # 串口 Tab (纯逻辑)
+│   │       ├── terminal_tab_page # 终端/SSH Tab (纯逻辑)
+│   │       ├── terminal_view     # 终端渲染控件 (FBO)
+│   │       ├── main.qml    # 主窗口
+│   │       ├── SerialTab.qml     # 串口 Tab UI
+│   │       ├── TerminalTab.qml   # 终端 Tab UI
+│   │       ├── ConnectionWizard.qml # 连接向导
+│   │       └── EmberDesign/      # Design System 模块
 │   └── cli/                # CLI 模块
 │       ├── cli_app         # CLI 应用逻辑
 │       └── ipc_client      # IPC 客户端
+├── src/gui/resources.qrc   # GUI 资源 (QML、图标)
 ├── resources/
-│   ├── styles/             # QSS 样式表
-│   └── icons/              # 图标资源
+│   └── icons/              # 应用图标
 ├── tests/                  # 单元测试
-├── deploy/                 # 部署/打包脚本
 └── CMakeLists.txt
 ```
 

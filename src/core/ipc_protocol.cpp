@@ -1,4 +1,5 @@
 #include "ipc_protocol.h"
+#include "serial_engine.h"
 
 QByteArray IpcProtocol::buildMessage(const QString& type, const QJsonObject& payload,
                                      const QString& id)

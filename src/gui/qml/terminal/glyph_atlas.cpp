@@ -1,6 +1,61 @@
 #include "glyph_atlas.h"
 #include <QPainter>
+#include <QFontDatabase>
+#include <algorithm>
 #include <cstring>
+
+/// 检测字符是否为 emoji (彩色象形文字)
+bool GlyphAtlas::isEmojiChar(uint32_t ch)
+{
+    if (ch >= 0x1F300 && ch <= 0x1F5FF) return true; // 杂项符号和象形文字
+    if (ch >= 0x1F600 && ch <= 0x1F64F) return true; // 表情符号
+    if (ch >= 0x1F680 && ch <= 0x1F6FF) return true; // 交通和地图符号
+    if (ch >= 0x1F700 && ch <= 0x1F77F) return true; // 炼金术符号
+    if (ch >= 0x1F780 && ch <= 0x1F7FF) return true; // 几何图形扩展
+    if (ch >= 0x1F800 && ch <= 0x1F8FF) return true; // 补充箭头
+    if (ch >= 0x1F900 && ch <= 0x1F9FF) return true; // 补充符号和象形文字
+    if (ch >= 0x1FA00 && ch <= 0x1FA6F) return true; // 国际象棋符号
+    if (ch >= 0x1FA70 && ch <= 0x1FAFF) return true; // 符号和象形文字扩展-A
+    if (ch >= 0x2600 && ch <= 0x26FF) return true;   // 杂项符号
+    if (ch >= 0x2700 && ch <= 0x27BF) return true;   // Dingbats
+    return false;
+}
+
+/// 构建字体回退列表：主字体 + 系统可用 CJK 字体 + 通用无衬线字体
+static QStringList buildFontFallbacks(const QString& primary)
+{
+    QStringList families;
+    families << primary;
+
+    // 常见中文字体候选（按优先级）
+    static const char* cjkCandidates[] = {
+        "Microsoft YaHei UI",
+        "Microsoft YaHei",
+        "SimHei",
+        "SimSun",
+        "NSimSun",
+        "Noto Sans CJK SC",
+        "Noto Sans Mono CJK SC",
+        "Source Han Sans SC",
+        "WenQuanYi Micro Hei",
+        "WenQuanYi Zen Hei",
+        "PingFang SC",
+        "Heiti SC",
+        "Meiryo",
+        "Malgun Gothic",
+    };
+
+    QFontDatabase db;
+    for (const char* name : cjkCandidates) {
+        if (db.hasFamily(QString::fromUtf8(name))) {
+            families << QString::fromUtf8(name);
+        }
+    }
+
+    // 通用最终回退
+    families << QStringLiteral("sans-serif");
+    return families;
+}
 
 GlyphAtlas::GlyphAtlas() = default;
 
@@ -15,8 +70,8 @@ void GlyphAtlas::setupFont(const QFont& font, int cellWidth, int cellHeight)
     font_.setStyleHint(QFont::Monospace);
     font_.setHintingPreference(QFont::PreferFullHinting);
     font_.setStyleStrategy(QFont::PreferAntialias);
-    // 设置 CJK 字体回退, 确保中日韩文字有合适字体
-    font_.setFamilies({font.family(), "Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "PingFang SC"});
+    // 动态构建字体回退链：主字体 + 系统可用 CJK 字体 + 通用字体
+    font_.setFamilies(buildFontFallbacks(font.family()));
 
     boldFont_ = font_;
     boldFont_.setBold(true);
@@ -33,6 +88,27 @@ void GlyphAtlas::setupFont(const QFont& font, int cellWidth, int cellHeight)
     boldItalicFont_.setItalic(true);
     boldItalicFont_.setHintingPreference(QFont::PreferFullHinting);
     boldItalicFont_.setStyleStrategy(QFont::PreferAntialias);
+
+    // 初始化彩色 Emoji 字体：优先使用系统原生彩色字体
+    emojiFont_ = font_;
+    emojiFont_.setStyleHint(QFont::AnyStyle);
+    emojiFont_.setHintingPreference(QFont::PreferFullHinting);
+    emojiFont_.setStyleStrategy(QFont::PreferAntialias);
+    static const char* emojiCandidates[] = {
+        "Segoe UI Emoji",
+        "Apple Color Emoji",
+        "Noto Color Emoji",
+        "Android Emoji",
+        "Noto Emoji",
+    };
+    QFontDatabase db;
+    for (const char* name : emojiCandidates) {
+        QString family = QString::fromUtf8(name);
+        if (db.hasFamily(family)) {
+            emojiFont_.setFamily(family);
+            break;
+        }
+    }
 
     cellWidth_ = cellWidth;
     cellHeight_ = cellHeight;
@@ -121,6 +197,7 @@ GlyphInfo GlyphAtlas::addGlyphToAtlas(const GlyphKey& key)
         cursorY_ = 0;
         rowHeight_ = 0;
         glyphs_.clear();
+        pendingUploads_.clear();
         atlasImage_.fill(Qt::transparent);
         needsRebuild_ = true;
     }
@@ -160,8 +237,6 @@ void GlyphAtlas::rasterizeGlyph(const GlyphKey& key, QImage& image, int x, int y
     else if (key.bold) f = &boldFont_;
     else if (key.italic) f = &italicFont_;
 
-    // 在图集图像上绘制白色字形
-    // 颜色由着色器在渲染时着色, 图集只存储 alpha 遮罩
     QPainter painter(&image);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
     painter.setRenderHint(QPainter::Antialiasing, true);
@@ -169,7 +244,26 @@ void GlyphAtlas::rasterizeGlyph(const GlyphKey& key, QImage& image, int x, int y
     // 裁剪到分配区域, 防止字形溢出影响相邻字符
     painter.setClipRect(x, y, maxW, cellHeight_);
 
-    // 白色字形 + alpha 通道
+    // Emoji 使用系统彩色字体直接绘制到 RGBA 图集，保留原始颜色。
+    // 渲染时通过顶点标志位区分，采样 RGBA 原色而非前景色着色。
+    if (isEmojiChar(key.ch)) {
+        QString text;
+        if (key.ch < 0x10000) {
+            text = QChar(static_cast<ushort>(key.ch));
+        } else {
+            char32_t cp = key.ch;
+            text = QString::fromUcs4(&cp, 1);
+        }
+        // 必须设置有效画笔颜色，Qt::NoPen 会导致 drawText 不绘制
+        painter.setPen(Qt::white);
+        painter.setFont(emojiFont_);
+        QRect cellRect(x, y, maxW, cellHeight_);
+        painter.drawText(cellRect, Qt::AlignCenter, text);
+        painter.end();
+        return;
+    }
+
+    // 白色字形 + alpha 通道；颜色由着色器在渲染时着色
     painter.setPen(Qt::white);
     painter.setFont(*f);
 

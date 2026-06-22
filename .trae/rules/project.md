@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-嵌入式跨平台调试工具，支持串口终端、SSH 远程终端、本地命令行终端以及 ST-Link/J-Link 等调试工具。
+嵌入式跨平台调试工具，支持串口终端、SSH 远程终端、本地命令行终端。
 
 ## 技术栈
 
@@ -36,12 +36,10 @@ src/
 │       ├── serial_tab_page.h/cpp  # 串口终端 Tab (纯逻辑)
 │       ├── terminal_tab_page.h/cpp # 终端/SSH Tab (纯逻辑)
 │       ├── terminal_view.h/cpp    # QQuickPaintedItem 终端控件
-│       ├── debug_page.h/cpp       # ST-Link/J-Link 调试页
 │       ├── main.qml               # 主窗口
 │       ├── SerialTab.qml          # 串口 Tab
 │       ├── TerminalTab.qml        # 终端 Tab
-│       ├── DebugTab.qml           # 调试 Tab
-│       ├── ConnectionWizard.qml   # 连接向导 (串口/终端/SSH/ST-Link/J-Link)
+│       ├── ConnectionWizard.qml   # 连接向导 (串口/终端/SSH)
 │       ├── SettingsDialog.qml     # 设置对话框
 │       ├── AboutDialog.qml        # 关于对话框
 │       └── EmberDesign/           # Design System 模块
@@ -78,8 +76,6 @@ enum class TabType {
     Serial,     // 串口终端 — 日志查看 + 数据发送
     SSH,        // SSH 远程终端 — 交互式 shell
     CMD,        // 本地命令行终端 — cmd/bash/powershell
-    STLink,     // ST-Link 调试 — 寄存器/堆栈/调用栈分析
-    JLink,      // J-Link 调试 — 寄存器/堆栈/调用栈分析
 };
 ```
 

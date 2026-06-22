@@ -1,8 +1,8 @@
 # CLI 接口规范文档
 
-> 项目: EmberIntel Serial Monitor v2.0  
-> 日期: 2026-05-17  
-> 版本: 1.0  
+> 项目: EmberInterDebugTool v1.2.0  
+> 日期: 2026-06-21  
+> 版本: 1.1  
 
 ---
 
@@ -25,20 +25,24 @@ serial-monitor-cli.exe [选项]
 选项:
   -p, --port <PORT>         串口号 (如 COM5, /dev/ttyUSB0)
   -b, --baudrate <RATE>     波特率 (默认: 115200)
-  -d, --databits <BITS>     数据位: 7 或 8 (默认: 8)
-  -y, --parity <PARITY>     校验位: N, E, O (默认: N)
-  -s, --stopbits <BITS>     停止位: 1 或 2 (默认: 1)
   -f, --filter <KEYWORD>    筛选关键字
   -o, --output <FILE>       保存日志到文件
   --hex                     HEX 显示模式
   --no-timestamp            禁用时间戳
-  --no-reconnect            禁用自动重连
   --clear                   启动时清空日志
   --list                    列出可用串口
   --cli                     交互式 CLI 模式
   --json                    机器可读 JSON 输出模式
   --ipc <NAME>              IPC 服务名 (默认: serial_monitor_ipc)
-  --bufsize <N>             缓冲区大小 (默认: 10000)
+  --send <DATA>             发送文本数据后退出
+  --send-hex <HEX>          发送 HEX 数据后退出
+  --send-file <FILE>        发送二进制文件后退出
+  --connect <PORT>          连接串口
+  --get-logs <COUNT>        获取最近 N 条日志
+  --get-status              获取连接状态
+  --pause                   暂停日志输出
+  --resume                  恢复日志输出
+  --activate-window         激活 GUI 窗口
   -h, --help                显示帮助
   -v, --version             显示版本
 ```
@@ -89,18 +93,16 @@ serial-monitor-cli.exe -p COM5 --cli
 | `clear` | `c` | 清空日志缓冲区 |
 | `status` | `s` | 显示连接状态 |
 | `list` | `ls` | 列出可用串口 |
-| `connect <port> [baud]` | `conn` | 连接串口 |
-| `disconnect [port]` | `disc` | 断开串口 |
-| `send <text>` | `>` | 发送文本数据 |
-| `sendhex <hex>` | `>h` | 发送 HEX 数据 |
-| `filter <keyword>` | `f` | 设置筛选关键字 |
-| `filter clear` | `fc` | 清除筛选 |
+| `send <text>` | | 发送文本数据 |
+| `sendhex <hex>` | | 发送 HEX 数据 |
+| `sendfile <file>` | | 发送二进制文件 |
+| `filter <keyword>` | | 设置筛选关键字 (空=取消) |
 | `hex` | | 切换 HEX 显示模式 |
 | `text` | | 切换文本显示模式 |
 | `timestamp` | `ts` | 切换时间戳显示 |
-| `export <file>` | `exp` | 导出日志到 JSON 文件 |
-| `pause` | `p` | 暂停日志输出 |
-| `resume` | `r` | 恢复日志输出 |
+| `export <file>` | | 导出日志到 JSON 文件 |
+| `connect <port> [baud]` | | 连接串口 |
+| `disconnect` | `disc` | 断开当前串口 |
 
 ### 4.2 命令示例
 

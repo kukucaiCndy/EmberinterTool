@@ -41,6 +41,7 @@ struct GlyphInfo {
 
 /// 字形纹理图集 - 预渲染字形到纹理, 避免每帧重复光栅化
 /// 字形以白色光栅化, 前景色由着色器着色 (参考 xterm.js CharAtlas 设计)
+/// Emoji 使用系统彩色字体直接光栅化, 保留原色。
 ///
 /// 线程模型:
 /// - setupFont() / getGlyph() / rasterizeGlyph(): 可在任意线程调用 (不需要 GL)
@@ -49,6 +50,9 @@ class GlyphAtlas {
 public:
     GlyphAtlas();
     ~GlyphAtlas();
+
+    /// 判断码点是否为彩色 Emoji
+    static bool isEmojiChar(uint32_t ch);
 
     /// 设置字体参数 (不需要 GL, 可在 synchronize 中调用)
     void setupFont(const QFont& font, int cellWidth, int cellHeight);
@@ -111,6 +115,7 @@ private:
     QFont boldFont_;
     QFont italicFont_;
     QFont boldItalicFont_;
+    QFont emojiFont_;   // 系统彩色 Emoji 字体 (如 Segoe UI Emoji)
     int cellWidth_ = 0;
     int cellHeight_ = 0;
 

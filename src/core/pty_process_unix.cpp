@@ -14,6 +14,8 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <cstdio>
+#include <cstring>
 
 // ── PtyProcessUnix ───────────────────────────────────────
 
@@ -48,9 +50,9 @@ private:
 
 // ── 工厂 ─────────────────────────────────────────────────
 
-PtyProcess* PtyProcess::create(QObject* parent)
+std::unique_ptr<PtyProcess> PtyProcess::create(QObject* parent)
 {
-    return new PtyProcessUnix(parent);
+    return std::unique_ptr<PtyProcess>(new PtyProcessUnix(parent));
 }
 
 // ── 构造/析构 ────────────────────────────────────────────
@@ -152,7 +154,10 @@ bool PtyProcessUnix::start(const QString& program, const QStringList& args,
 
         execvp(progBytes.constData(), argv.data());
 
-        // execvp 失败
+        // execvp 失败: 向 stderr (已重定向到 PTY) 报告错误后退出
+        std::fprintf(stderr, "execvp failed: %s: %s\n",
+                     progBytes.constData(), std::strerror(errno));
+        std::fflush(stderr);
         _exit(127);
     }
 
@@ -192,6 +197,12 @@ void PtyProcessUnix::onMasterReadyRead(int /*fd*/)
     if (n > 0) {
         readBuffer_.append(buf, static_cast<int>(n));
         emit readyRead();
+    } else if (n == 0) {
+        // EOF: 子进程关闭了 PTY slave 端
+        // 必须处理，否则 QSocketNotifier 会持续触发导致 CPU 100%
+        spdlog::info("PTY: EOF received, child process closed PTY");
+        running_ = false;
+        emit finished(exitCode_);
     } else if (n < 0 && errno != EAGAIN && errno != EINTR) {
         spdlog::error("PTY: read() failed, errno={}", errno);
     }
@@ -245,6 +256,10 @@ void PtyProcessUnix::checkExit()
     int status;
     pid_t result = waitpid(childPid_, &status, WNOHANG);
     if (result == 0) return;  // 还在运行
+    if (result < 0) {
+        spdlog::error("PTY: waitpid() failed, errno={}", errno);
+        return;
+    }
 
     running_ = false;
 
@@ -302,19 +317,36 @@ void PtyProcessUnix::terminate()
         // 先发 SIGHUP (挂断)
         kill(childPid_, SIGHUP);
 
-        // 等待 2 秒
-        int status;
-        pid_t result = waitpid(childPid_, &status, WNOHANG);
-        if (result == 0) {
-            usleep(200000);  // 200ms
+        // 非阻塞轮询等待子进程退出, 避免永久阻塞主线程
+        int status = 0;
+        pid_t result = 0;
+        bool killed = false;
+        for (int i = 0; i < 20; ++i) {
             result = waitpid(childPid_, &status, WNOHANG);
+            if (result != 0) break;
+            usleep(100000);  // 100ms, 总计最多 2 秒
+        }
+
+        if (result == 0 && !killed) {
+            // 强制 SIGKILL
+            kill(childPid_, SIGKILL);
+            killed = true;
+            for (int i = 0; i < 10; ++i) {
+                result = waitpid(childPid_, &status, WNOHANG);
+                if (result != 0) break;
+                usleep(100000);  // 100ms, 总计最多 1 秒
+            }
         }
 
         if (result == 0) {
-            // 强制 SIGKILL
-            kill(childPid_, SIGKILL);
-            waitpid(childPid_, &status, 0);
+            spdlog::warn("PTY: failed to reap child process {} after SIGKILL", childPid_);
+        } else if (result > 0) {
+            if (WIFEXITED(status))
+                exitCode_ = WEXITSTATUS(status);
+            else if (WIFSIGNALED(status))
+                exitCode_ = 128 + WTERMSIG(status);
         }
+
         childPid_ = -1;
     }
 
@@ -322,6 +354,9 @@ void PtyProcessUnix::terminate()
         close(masterFd_);
         masterFd_ = -1;
     }
+
+    emit finished(exitCode_);
+    spdlog::info("PTY: terminated, exit code={}", exitCode_);
 }
 
 bool PtyProcessUnix::isRunning() const

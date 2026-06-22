@@ -401,7 +401,6 @@ Popup {
     // ═══════════════════════════════════════════════
 
     component SectionHeader: Text {
-        text: parent.text
         color: DesignSystem.textPrimary
         font.family: DesignSystem.fontBody
         font.pixelSize: DesignSystem.fontSizeXl

@@ -1,9 +1,10 @@
 #include "app_core.h"
-#include <QMessageBox>
 #include <QSerialPortInfo>
 #include <QJsonArray>
 #include <QTimer>
 #include <QDateTime>
+#include <QGuiApplication>
+#include <QWindow>
 #include <spdlog/spdlog.h>
 
 AppCore::AppCore(QObject* parent)
@@ -173,7 +174,8 @@ void AppCore::confirmConnection(const QJsonObject& params)
         spdlog::debug("AppCore::confirmConnection: calling page->connectTo, view_={}", (void*)nullptr);
         page->connectTo(connParams);
 
-        statusText_ = QString::fromUtf8("● %1").arg(shell);
+        statusText_ = QString::fromUtf8("○ %1 连接中...").arg(shell);
+        emit statusTextChanged();
         tabConnParams_[page] = connParams;
         tabConnectTimes_[page] = QDateTime::currentDateTime();
 
@@ -198,10 +200,14 @@ void AppCore::confirmConnection(const QJsonObject& params)
         connParams["password"] = sp.extra["password"].toString();
         page->connectTo(connParams);
 
-        statusText_ = QString::fromUtf8("● %1@%2").arg(user, host);
+        statusText_ = QString::fromUtf8("○ %1@%2 连接中...").arg(user, host);
+        emit statusTextChanged();
         tabConnParams_[page] = connParams;
         tabConnectTimes_[page] = QDateTime::currentDateTime();
     } else {
+        spdlog::warn("AppCore::confirmConnection: unknown connection type '{}'", connType.toStdString());
+        statusText_ = QString::fromUtf8("未知连接类型: %1").arg(connType);
+        emit statusTextChanged();
         return;
     }
 
@@ -391,7 +397,7 @@ void AppCore::closeTab(int index)
                   page ? page->tabTitle().toStdString() : "null");
     if (page) {
         removeTab(page);
-        page->disconnect();
+        page->closeConnection();
         page->deleteLater();
     }
     tabModel_.removeTab(index);
@@ -413,13 +419,9 @@ void AppCore::openSettings()
 
 void AppCore::openAbout()
 {
+    // 仅发出信号让 QML 的 AboutDialog 处理显示
+    // 移除 QMessageBox::about 调用，避免双重弹窗和 QWidget 依赖
     emit aboutRequested();
-    QMessageBox::about(nullptr, QString::fromUtf8("关于"),
-        QString::fromUtf8("EmberInterDebugTool - 尘智\n\n"
-                          "嵌入式跨平台调试工具\n"
-                          "版本: 1.2.0\n"
-                          "框架: Qt6 QML\n\n"
-                          "微尘藏星火, 终端蕴尘智"));
 }
 
 void AppCore::saveSettings(int fontSize, int maxLogLines, bool autoScroll)
@@ -523,21 +525,22 @@ void AppCore::updateStatus()
 
 void AppCore::onTabRxChanged(qint64 bytes)
 {
-    rxBytes_ = bytes;
-    updateStatus();
-
-    // IPC 广播: 通知所有 CLI 客户端
+    // 仅当信号来自当前 Tab 时才更新状态栏，避免多 Tab 场景下显示错乱
     TabPage* page = qobject_cast<TabPage*>(sender());
-    if (page && ipcServer_ && ipcServer_->clientCount() > 0) {
-        // 获取最近的日志条目广播
-        Q_UNUSED(bytes);
+    if (page && page == tabModel_.tabAt(currentTabIdx_)) {
+        rxBytes_ = bytes;
+        emit rxBytesTextChanged();
     }
 }
 
 void AppCore::onTabTxChanged(qint64 bytes)
 {
-    txBytes_ = bytes;
-    updateStatus();
+    // 仅当信号来自当前 Tab 时才更新状态栏
+    TabPage* page = qobject_cast<TabPage*>(sender());
+    if (page && page == tabModel_.tabAt(currentTabIdx_)) {
+        txBytes_ = bytes;
+        emit txBytesTextChanged();
+    }
 }
 
 void AppCore::onTabStatusChanged(bool connected)
@@ -588,6 +591,11 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
 
     // ── 无状态命令 ──
     if (cmd == "activate_window") {
+        if (QWindow* w = QGuiApplication::focusWindow()) {
+            w->requestActivate();
+        } else if (!QGuiApplication::topLevelWindows().isEmpty()) {
+            QGuiApplication::topLevelWindows().first()->requestActivate();
+        }
         return;
     }
 
@@ -595,9 +603,11 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
         QJsonArray ports;
         for (const auto& info : QSerialPortInfo::availablePorts()) {
             QJsonObject port;
-            port["port"] = info.portName();
+            port["name"] = info.portName();
             port["description"] = info.description();
             port["manufacturer"] = info.manufacturer();
+            // 标记有厂商信息的物理设备为推荐
+            port["recommended"] = !info.manufacturer().isEmpty();
             ports.append(port);
         }
         data["ports"] = ports;
@@ -624,8 +634,36 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
     }
 
     // ── 需要活动串口 Tab 的命令 ──
+    // connect 命令单独处理: 无活动串口 Tab 时自动创建
+    if (cmd == "connect") {
+        QString port = params["port"].toString();
+        int baud = params["baudrate"].toInt(115200);
+        QJsonObject c;
+        c["port"] = port;
+        c["baud"] = baud;
+        c["data_bits"] = params.value("data_bits").toInt(8);
+        c["parity"] = params.value("parity").toInt(0);
+        c["stop_bits"] = params.value("stop_bits").toInt(1);
+
+        auto* sp = qobject_cast<SerialTabPage*>(page);
+        if (!sp) {
+            // 无活动串口 Tab, 自动创建
+            sp = new SerialTabPage(this);
+            sp->setPortName(port);
+            addTab(sp);
+            usedPorts_.insert(port);
+            refreshSerialPorts();
+            tabConnParams_[sp] = c;
+            tabConnectTimes_[sp] = QDateTime::currentDateTime();
+        }
+        sp->connectTo(c);
+        data["message"] = "Connecting...";
+        ipcServer_->sendResponse(clientId, reqId, true, data);
+        return;
+    }
+
     if (cmd == "send_text" || cmd == "send_hex" || cmd == "send_file" ||
-        cmd == "connect" || cmd == "disconnect" ||
+        cmd == "disconnect" ||
         cmd == "get_logs" || cmd == "set_filter" || cmd == "export_logs" ||
         cmd == "pause" || cmd == "resume") {
 
@@ -653,28 +691,17 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
         }
 
         if (cmd == "send_file") {
-            data["message"] = "send_file not implemented yet";
-            ipcServer_->sendResponse(clientId, reqId, false, data);
-            return;
-        }
-
-        if (cmd == "connect") {
-            QString port = params["port"].toString();
-            int baud = params["baudrate"].toInt(115200);
-            QJsonObject c;
-            c["port"] = port;
-            c["baud"] = baud;
-            c["data_bits"] = 8;
-            c["parity"] = 0;
-            c["stop_bits"] = 1;
-            sp->connectTo(c);
-            data["message"] = "Connecting...";
+            // CLI 发送 Base64 编码的文件内容
+            QString b64 = params["data"].toString();
+            QByteArray raw = QByteArray::fromBase64(b64.toLatin1());
+            sp->sendRaw(raw);
+            data["message"] = QString("Sent %1 bytes").arg(raw.size());
             ipcServer_->sendResponse(clientId, reqId, true, data);
             return;
         }
 
         if (cmd == "disconnect") {
-            sp->disconnect();
+            sp->closeConnection();
             data["message"] = "Disconnected";
             ipcServer_->sendResponse(clientId, reqId, true, data);
             return;

@@ -15,7 +15,10 @@ TerminalTabPage::TerminalTabPage(TabType type, QObject* parent)
 
 TerminalTabPage::~TerminalTabPage()
 {
-    disconnect();
+    // 析构时直接终止，不发信号
+    if (view_) {
+        view_->terminate();
+    }
 }
 
 QString TerminalTabPage::tabTitle() const
@@ -33,13 +36,20 @@ QString TerminalTabPage::tabTitle() const
 void TerminalTabPage::attachView(TerminalView* view)
 {
     spdlog::debug("TerminalTabPage::attachView: view={}, this={}", (void*)view, (void*)this);
+
+    // 防止重复连接：如果同一个 view 已经附加，直接返回
+    if (view_ == view) {
+        spdlog::debug("TerminalTabPage::attachView: same view already attached, skipping");
+        return;
+    }
+
     view_ = view;
     if (!view_) {
         spdlog::warn("TerminalTabPage::attachView: view is null, aborting");
         return;
     }
 
-    // 连接 View 信号
+    // 连接 View 信号（view_ 是 QPointer，QML 销毁 view 时会自动置 null）
     connect(view_, &TerminalView::shellStarted, this, [this]() {
         spdlog::debug("TerminalTabPage: shellStarted signal received, this={}", (void*)this);
         connected_ = true;
@@ -90,12 +100,34 @@ void TerminalTabPage::doConnect(const QJsonObject& params)
         emit tabTitleChanged();
 
         QStringList args;
+        bool isMsysBash = false;
         if (shell == "powershell.exe" || shell == "pwsh.exe") {
             args << "-NoLogo" << "-NoExit";
+        } else if (shell.endsWith("bash.exe", Qt::CaseInsensitive) ||
+                   shell.endsWith("bash", Qt::CaseInsensitive) ||
+                   shell.endsWith("sh.exe", Qt::CaseInsensitive) ||
+                   shell.endsWith("sh", Qt::CaseInsensitive) ||
+                   shell.endsWith("zsh.exe", Qt::CaseInsensitive) ||
+                   shell.endsWith("zsh", Qt::CaseInsensitive)) {
+            // Git Bash / MSYS2 bash 在 ConPTY 下需要显式进入交互式模式，
+            // 否则无控制终端时会立刻退出。
+            args << "--login" << "-i";
+            isMsysBash = true;
         }
         spdlog::debug("TerminalTabPage::doConnect: calling view_->startShell({}, {}), view_={}",
                       shell.toStdString(), args.size(), (void*)view_);
-        view_->startShell(shell, args);
+
+        if (isMsysBash) {
+            // MSYS2/Git Bash 需要正确的 TERM 和 MSYSTEM 环境变量才能保持交互
+            QVariantMap env;
+            env["TERM"] = "xterm-256color";
+            env["MSYSTEM"] = "MINGW64";
+            env["MINGW_PREFIX"] = "/mingw64";
+            env["CHERE_INVOKING"] = "1";
+            view_->startShellWithEnv(shell, args, env);
+        } else {
+            view_->startShell(shell, args);
+        }
         view_->setShellName(shell);
         spdlog::info("TerminalTabPage: starting local shell {}", shell.toStdString());
         break;
@@ -117,7 +149,12 @@ void TerminalTabPage::doConnect(const QJsonObject& params)
             args << host;
 
         args << "-o" << "StrictHostKeyChecking=accept-new";
+#ifdef Q_OS_WIN
+        // Windows 没有 /dev/null，使用 NUL 设备
+        args << "-o" << "UserKnownHostsFile=NUL";
+#else
         args << "-o" << "UserKnownHostsFile=/dev/null";
+#endif
 
         spdlog::debug("TerminalTabPage::doConnect: calling view_->startShell(ssh, {}), view_={}",
                       args.size(), (void*)view_);
@@ -132,9 +169,9 @@ void TerminalTabPage::doConnect(const QJsonObject& params)
     }
 }
 
-void TerminalTabPage::disconnect()
+void TerminalTabPage::closeConnection()
 {
-    spdlog::debug("TerminalTabPage::disconnect: view_={}, this={}", (void*)view_, (void*)this);
+    spdlog::debug("TerminalTabPage::closeConnection: view_={}, this={}", (void*)view_.data(), (void*)this);
     if (view_) {
         view_->terminate();
     }
@@ -143,10 +180,12 @@ void TerminalTabPage::disconnect()
     emit statusChanged(false);
 }
 
-void TerminalTabPage::writeInput(const QByteArray& data)
+void TerminalTabPage::writeInput(const QString& text)
 {
+    spdlog::debug("TerminalTabPage::writeInput: text='{}', view_={}, connected={}",
+                  text.toStdString(), (void*)view_.data(), connected_);
     if (view_)
-        view_->writeInput(data);
+        view_->writeInput(text.toUtf8());
     else
         spdlog::warn("TerminalTabPage::writeInput: view_ is null, dropping input");
 }

@@ -35,7 +35,7 @@ QVector<LogEntry> LogBuffer::getRecent(int count) const
 {
     QMutexLocker locker(&mutex_);
     QVector<LogEntry> result;
-    if (buffer_.empty()) {
+    if (buffer_.empty() || count <= 0) {
         return result;
     }
     int actual = qMin(count, static_cast<int>(buffer_.size()));
@@ -79,5 +79,6 @@ void LogBuffer::setMaxSize(int size)
 
 int LogBuffer::maxSize() const
 {
+    QMutexLocker locker(&mutex_);
     return maxSize_;
 }

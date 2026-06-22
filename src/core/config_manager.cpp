@@ -90,7 +90,11 @@ bool ConfigManager::load(const QString& path)
     for (const auto& val : tabsArr) {
         QJsonObject tab = val.toObject();
         TabConfig tc;
-        tc.type = tabTypeFromString(tab["type"].toString("serial"));
+        bool typeOk = false;
+        tc.type = tabTypeFromString(tab["type"].toString("serial"), &typeOk);
+        if (!typeOk) {
+            spdlog::warn("Unknown tab type '{}', defaulting to serial", tab["type"].toString().toStdString());
+        }
         tc.port = tab["port"].toString();
         tc.name = tab["name"].toString();
         tc.extra = tab["extra"].toObject();
@@ -101,18 +105,37 @@ bool ConfigManager::load(const QString& path)
     for (const auto& val : savedArr) {
         QJsonObject sp = val.toObject();
         SavedPort saved;
-        saved.type = tabTypeFromString(sp["type"].toString("serial"));
+        bool savedTypeOk = false;
+        saved.type = tabTypeFromString(sp["type"].toString("serial"), &savedTypeOk);
+        if (!savedTypeOk) {
+            spdlog::warn("Unknown saved port type '{}', defaulting to serial", sp["type"].toString().toStdString());
+        }
         saved.name = sp["name"].toString();
         saved.port = sp["port"].toString();
         saved.baudrate = sp["baudrate"].toInt(115200);
-        saved.databits = static_cast<QSerialPort::DataBits>(sp["databits"].toInt(8));
+        int db = sp["databits"].toInt(8);
+        if (db != 5 && db != 6 && db != 7 && db != 8) {
+            spdlog::warn("Invalid databits value {}, using default 8", db);
+            db = 8;
+        }
+        saved.databits = static_cast<QSerialPort::DataBits>(db);
         QString p = sp["parity"].toString("N");
         if (p == "E") saved.parity = QSerialPort::EvenParity;
         else if (p == "O") saved.parity = QSerialPort::OddParity;
         else if (p == "M") saved.parity = QSerialPort::MarkParity;
         else if (p == "S") saved.parity = QSerialPort::SpaceParity;
         else saved.parity = QSerialPort::NoParity;
-        saved.stopbits = static_cast<QSerialPort::StopBits>(sp["stopbits"].toInt(1));
+        int sb = sp["stopbits"].toInt(1);
+        if (sb != 1 && sb != 2 && sb != 3) {
+            spdlog::warn("Invalid stopbits value {}, using default 1", sb);
+            sb = 1;
+        }
+        saved.stopbits = static_cast<QSerialPort::StopBits>(sb);
+        // flowcontrol 反序列化
+        QString fc = sp["flowcontrol"].toString("N");
+        if (fc == "H") saved.flowcontrol = QSerialPort::HardwareControl;
+        else if (fc == "S") saved.flowcontrol = QSerialPort::SoftwareControl;
+        else saved.flowcontrol = QSerialPort::NoFlowControl;
         saved.extra = sp["extra"].toObject();
         config_.savedPorts.append(saved);
     }
@@ -199,6 +222,12 @@ bool ConfigManager::save(const QString& path)
             default: sp["parity"] = "N"; break;
         }
         sp["stopbits"] = static_cast<int>(s.stopbits);
+        // flowcontrol 序列化
+        switch (s.flowcontrol) {
+            case QSerialPort::HardwareControl: sp["flowcontrol"] = "H"; break;
+            case QSerialPort::SoftwareControl: sp["flowcontrol"] = "S"; break;
+            default: sp["flowcontrol"] = "N"; break;
+        }
         if (!s.extra.isEmpty()) {
             sp["extra"] = s.extra;
         }

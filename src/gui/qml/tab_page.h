@@ -19,7 +19,7 @@ public:
     virtual bool isConnected() const = 0;
 
     virtual void connectTo(const QJsonObject& params) = 0;
-    virtual void disconnect() = 0;
+    virtual void closeConnection() = 0;  // 重命名以避免隐藏 QObject::disconnect()
 
     virtual void clearContent() {}
     virtual void exportContent(const QString& path) { Q_UNUSED(path); }

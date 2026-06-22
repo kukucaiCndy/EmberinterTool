@@ -100,12 +100,6 @@ QtObject {
     readonly property int sessionItemHeight: 36  // 侧边栏会话条目高度
 
     // ═══════════════════════════════════════════════
-    // 阴影 (用于 Popup/弹窗)
-    // ═══════════════════════════════════════════════
-    readonly property string shadowPopup: "0 4px 24px rgba(0,0,0,0.4)"
-    readonly property string shadowCard:  "0 2px 8px rgba(0,0,0,0.25)"
-
-    // ═══════════════════════════════════════════════
     // 动画时长 (ms)
     // ═══════════════════════════════════════════════
     readonly property int animFast:    100  // 微交互

@@ -1,10 +1,12 @@
 #include "terminal_view.h"
 #include <QOpenGLFunctions>
 #include <QOpenGLFramebufferObject>
+#include <cmath>
 #include <QQuickWindow>
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QFontMetricsF>
+#include <QProcessEnvironment>
 #include <spdlog/spdlog.h>
 
 // --- FBO 渲染器 (在渲染线程执行) ---
@@ -150,6 +152,7 @@ public:
                 dst.bold = cell.bold;
                 dst.italic = cell.italic;
                 dst.inverse = cell.inverse;
+                dst.emoji = GlyphAtlas::isEmojiChar(cell.ch);
                 dst.u0 = dst.v0 = dst.u1 = dst.v1 = 0;
 
                 // 预取字形并缓存纹理坐标 (光栅化到 QImage, 不需要 GL)
@@ -184,6 +187,15 @@ public:
             initializeOpenGLFunctions();
             glFunctionsInitialized_ = true;
             spdlog::info("[FboRenderer] GL functions initialized");
+
+            // Qt6 中 QQuickFramebufferObject::Renderer 没有 invalidate() 虚方法,
+            // 通过 QOpenGLContext::aboutToBeDestroyed 信号触发 GL 资源清理
+            auto* ctx = QOpenGLContext::currentContext();
+            if (ctx) {
+                // Renderer 不是 QObject, 使用 QObject::connect 静态方法 + lambda
+                QObject::connect(ctx, &QOpenGLContext::aboutToBeDestroyed,
+                                 [this]() { cleanupGL(); });
+            }
         }
 
         // ── 初始化/重建 GL 资源 ──
@@ -241,6 +253,20 @@ public:
         return new QOpenGLFramebufferObject(size);
     }
 
+    /// GL 资源清理: 当 GL 上下文即将销毁时调用 (通过 aboutToBeDestroyed 信号)
+    /// 修复 OpenGL 资源泄漏：cleanup() 方法此前从未被调用
+    void cleanupGL()
+    {
+        if (rendererInitialized_) {
+            renderer_.cleanup(this);
+            rendererInitialized_ = false;
+        }
+        if (atlasPtr_) {
+            atlasPtr_->cleanup(this);
+        }
+        glFunctionsInitialized_ = false;
+    }
+
 private:
     TerminalView* view_ = nullptr;
     bool glFunctionsInitialized_ = false;
@@ -257,7 +283,8 @@ TerminalView::TerminalView(QQuickItem* parent)
     : QQuickFramebufferObject(parent)
 {
     setFlag(ItemHasContents, true);
-    setFlag(ItemIsFocusScope, true);
+    // ItemIsFocusScope 会导致焦点传递给子项 (如 MouseArea)，
+    // 而非 TerminalView 自身，去掉此标志确保键盘事件直接到达 TerminalView
     setAcceptedMouseButtons(Qt::AllButtons);
     setAcceptHoverEvents(true);
 
@@ -412,8 +439,19 @@ void TerminalView::startShell(const QString& program, const QStringList& args)
     model_.startShell(program, args);
 }
 
+void TerminalView::startShellWithEnv(const QString& program, const QStringList& args,
+                                     const QVariantMap& env)
+{
+    QProcessEnvironment pe = QProcessEnvironment::systemEnvironment();
+    for (auto it = env.begin(); it != env.end(); ++it) {
+        pe.insert(it.key(), it.value().toString());
+    }
+    model_.startShell(program, args, QString(), pe);
+}
+
 void TerminalView::writeInput(const QByteArray& data)
 {
+    spdlog::debug("TerminalView::writeInput: size={}", data.size());
     model_.writeToPty(data);
 }
 
@@ -429,6 +467,8 @@ bool TerminalView::isRunning() const
 
 void TerminalView::keyPressEvent(QKeyEvent* event)
 {
+    spdlog::debug("TerminalView::keyPressEvent key={} hasFocus={}", event->key(), hasActiveFocus());
+
     // 快捷键拦截
     if (event->modifiers() & Qt::ControlModifier &&
         event->modifiers() & Qt::ShiftModifier) {
@@ -463,17 +503,18 @@ void TerminalView::keyReleaseEvent(QKeyEvent* event)
 
 void TerminalView::mousePressEvent(QMouseEvent* event)
 {
+    spdlog::debug("TerminalView::mousePressEvent button={} activeFocus={}",
+                  static_cast<int>(event->button()), hasActiveFocus());
+
+    // 鼠标点击时确保 TerminalView 获得键盘焦点
+    if (!hasActiveFocus()) {
+        forceActiveFocus();
+    }
+
     if (event->button() == Qt::LeftButton) {
         QPointF localPos = mapFromScene(event->scenePosition());
         int col = pixelToCol(localPos.x());
         int row = pixelToRow(localPos.y());
-        spdlog::debug("[MousePress] scene=({:.1f},{:.1f}) local=({:.1f},{:.1f}) col={} row={} scrollOffset={} scrollback={}",
-                      event->scenePosition().x(), event->scenePosition().y(),
-                      localPos.x(), localPos.y(), col, row, scrollOffset_,
-                      model_.buffer().scrollbackSize());
-        QPointF sceneTopLeft = mapToScene(QPointF(0, 0));
-        spdlog::debug("[MousePress] item geom x={} y={} w={} h={} sceneTopLeft=({},{})",
-                      x(), y(), width(), height(), sceneTopLeft.x(), sceneTopLeft.y());
 
         if (model_.input().mouseTracking() != TerminalInput::None) {
             model_.handleMousePress(event, col, row);
@@ -549,7 +590,7 @@ void TerminalView::mouseReleaseEvent(QMouseEvent* event)
 void TerminalView::wheelEvent(QWheelEvent* event)
 {
     int delta = event->angleDelta().y();
-    int scrollLines = delta / 120 * 3;
+    int scrollLines = qRound(delta * 3.0 / 120.0);
 
     setScrollOffset(scrollOffset_ - scrollLines * static_cast<int>(cellHeight_));
 
@@ -591,8 +632,18 @@ void TerminalView::onCursorBlink()
 void TerminalView::recalcCellSize()
 {
     QFontMetricsF fm(font_);
-    cellWidth_ = fm.horizontalAdvance('W');
-    cellHeight_ = fm.height();
+
+    // 确保单元格宽度至少为 1，防止后续除 0 导致终端尺寸异常
+    qreal cw = fm.horizontalAdvance('W');
+    cellWidth_ = (cw > 0) ? static_cast<int>(std::ceil(cw)) : 1;
+
+    // 使用 ascent + descent 计算行高，避免中文字体的 leading 导致行距过大；
+    // 同时保证行高至少为 1。
+    qreal ch = fm.ascent() + fm.descent();
+    if (ch <= 0) {
+        ch = fm.height();
+    }
+    cellHeight_ = (ch > 0) ? static_cast<int>(std::ceil(ch)) : 1;
 }
 
 void TerminalView::updateTerminalSize()
@@ -614,13 +665,17 @@ void TerminalView::updateTerminalSize()
 
 int TerminalView::pixelToRow(int y) const
 {
+    int maxRow = model_.buffer().rows() - 1;
+    if (maxRow < 0) return 0;
     int row = (y + scrollOffset_) / static_cast<int>(cellHeight_);
     row -= model_.buffer().scrollbackSize();
-    return std::clamp(row, 0, model_.buffer().rows() - 1);
+    return std::clamp(row, 0, maxRow);
 }
 
 int TerminalView::pixelToCol(int x) const
 {
+    int maxCol = model_.buffer().columns() - 1;
+    if (maxCol < 0) return 0;
     int col = static_cast<int>(x / cellWidth_);
-    return std::clamp(col, 0, model_.buffer().columns() - 1);
+    return std::clamp(col, 0, maxCol);
 }
