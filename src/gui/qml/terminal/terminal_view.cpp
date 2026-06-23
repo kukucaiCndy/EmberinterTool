@@ -1,6 +1,7 @@
 #include "terminal_view.h"
 #include <QOpenGLFunctions>
 #include <QOpenGLFramebufferObject>
+#include <QPointer>
 #include <cmath>
 #include <QQuickWindow>
 #include <QClipboard>
@@ -29,8 +30,9 @@ public:
     void synchronize(QQuickFramebufferObject* item) override
     {
         view_ = static_cast<TerminalView*>(item);
-        auto* view = view_;
-        if (!view) return;
+        if (!view_) return;
+        auto* view = view_.data();
+        if (!view || view->isDestroyed()) return;
 
         // ── 记录是否需要初始化/重建 ──
         needsGLInit_ = !rendererInitialized_ || view->atlas().needsRebuild();
@@ -182,6 +184,11 @@ public:
     /// render: 在渲染线程执行, OpenGL 上下文当前, 所有 GL 操作在这里
     void render() override
     {
+        // View 已销毁则不再渲染 (QPointer 会自动置空)
+        if (!view_ || view_->isDestroyed()) {
+            return;
+        }
+
         // 首次调用时初始化 GL 函数
         if (!glFunctionsInitialized_) {
             initializeOpenGLFunctions();
@@ -268,7 +275,7 @@ public:
     }
 
 private:
-    TerminalView* view_ = nullptr;
+    QPointer<TerminalView> view_;
     bool glFunctionsInitialized_ = false;
     bool rendererInitialized_ = false;
     bool needsGLInit_ = true;
@@ -320,7 +327,19 @@ TerminalView::TerminalView(QQuickItem* parent)
     connect(&model_, &TerminalModel::bell, this, &TerminalView::bell);
 }
 
-TerminalView::~TerminalView() = default;
+TerminalView::~TerminalView()
+{
+    // 通知场景图释放 FBO renderer，避免渲染线程在 view 销毁后继续访问
+    releaseResources();
+
+    // 断开 model 信号，防止 terminate 触发回调访问正在销毁的 this
+    disconnect(&model_, nullptr, this, nullptr);
+
+    // 终止底层 PTY 进程
+    model_.terminate();
+
+    destroyed_ = true;
+}
 
 QQuickFramebufferObject::Renderer* TerminalView::createRenderer() const
 {
@@ -463,6 +482,110 @@ void TerminalView::terminate()
 bool TerminalView::isRunning() const
 {
     return model_.isRunning();
+}
+
+static uint32_t colorToAbgr(const QColor& c)
+{
+    return (255u << 24) |
+           (static_cast<uint32_t>(c.blue()) << 16) |
+           (static_cast<uint32_t>(c.green()) << 8) |
+           static_cast<uint32_t>(c.red());
+}
+
+void TerminalView::setColorScheme(const QString& name)
+{
+    struct Scheme {
+        QColor fg;
+        QColor bg;
+        std::array<QColor, 16> pal;
+    };
+
+    // 经典终端/编辑器 16 色主题
+    static const std::unordered_map<std::string, Scheme> schemes = {
+        {"MSYS2 Dark", {
+            QColor("#CCCCCC"), QColor("#000000"),
+            {{
+                QColor("#000000"), QColor("#AA0000"), QColor("#00AA00"), QColor("#AA5500"),
+                QColor("#0000AA"), QColor("#AA00AA"), QColor("#00AAAA"), QColor("#AAAAAA"),
+                QColor("#555555"), QColor("#FF5555"), QColor("#55FF55"), QColor("#FFFF55"),
+                QColor("#5555FF"), QColor("#FF55FF"), QColor("#55FFFF"), QColor("#FFFFFF")
+            }}
+        }},
+        {"VS Code Dark+", {
+            QColor("#D4D4D4"), QColor("#1E1E1E"),
+            {{
+                QColor("#000000"), QColor("#CD3131"), QColor("#0DBC79"), QColor("#E5E510"),
+                QColor("#2472C8"), QColor("#BC3FBC"), QColor("#11A8CD"), QColor("#E5E5E5"),
+                QColor("#666666"), QColor("#F14C4C"), QColor("#23D18B"), QColor("#F5F543"),
+                QColor("#3B8EEA"), QColor("#D670D6"), QColor("#29B8DB"), QColor("#FFFFFF")
+            }}
+        }},
+        {"VS Code Dark", {
+            QColor("#CCCCCC"), QColor("#181818"),
+            {{
+                QColor("#000000"), QColor("#CD3131"), QColor("#0DBC79"), QColor("#E5E510"),
+                QColor("#2472C8"), QColor("#BC3FBC"), QColor("#11A8CD"), QColor("#E5E5E5"),
+                QColor("#666666"), QColor("#F14C4C"), QColor("#23D18B"), QColor("#F5F543"),
+                QColor("#3B8EEA"), QColor("#D670D6"), QColor("#29B8DB"), QColor("#FFFFFF")
+            }}
+        }},
+        {"Light", {
+            QColor("#1E1E2E"), QColor("#EFF1F5"),
+            {{
+                QColor("#4C4F69"), QColor("#D20F39"), QColor("#40A02B"), QColor("#DF8E1D"),
+                QColor("#1E66F5"), QColor("#EA76CB"), QColor("#179299"), QColor("#ACB0BE"),
+                QColor("#6C6F85"), QColor("#E64553"), QColor("#64BC26"), QColor("#FE640B"),
+                QColor("#209FB5"), QColor("#8839EF"), QColor("#DD7878"), QColor("#BCC0CC")
+            }}
+        }},
+        {"Green Phosphor", {
+            QColor("#00FF41"), QColor("#0D0D0D"),
+            {{
+                QColor("#0D0D0D"), QColor("#007F20"), QColor("#00FF41"), QColor("#55FF55"),
+                QColor("#00AA00"), QColor("#007F20"), QColor("#00FF41"), QColor("#AAFFAA"),
+                QColor("#1A1A1A"), QColor("#00CC33"), QColor("#55FF55"), QColor("#80FF80"),
+                QColor("#00FF41"), QColor("#00CC33"), QColor("#AAFFAA"), QColor("#CCFFCC")
+            }}
+        }},
+        {"Amber", {
+            QColor("#FFB000"), QColor("#1A1A1A"),
+            {{
+                QColor("#1A1A1A"), QColor("#7F5600"), QColor("#AA7700"), QColor("#CC8800"),
+                QColor("#7F5600"), QColor("#AA7700"), QColor("#CC8800"), QColor("#FFCC00"),
+                QColor("#333333"), QColor("#CC8800"), QColor("#FFB000"), QColor("#FFCC33"),
+                QColor("#FFB000"), QColor("#FFCC33"), QColor("#FFDD66"), QColor("#FFEEAA")
+            }}
+        }},
+        {"Nord", {
+            QColor("#D8DEE9"), QColor("#2E3440"),
+            {{
+                QColor("#3B4252"), QColor("#BF616A"), QColor("#A3BE8C"), QColor("#EBCB8B"),
+                QColor("#81A1C1"), QColor("#B48EAD"), QColor("#88C0D0"), QColor("#E5E9F0"),
+                QColor("#4C566A"), QColor("#BF616A"), QColor("#A3BE8C"), QColor("#EBCB8B"),
+                QColor("#81A1C1"), QColor("#B48EAD"), QColor("#8FBCBB"), QColor("#ECEFF4")
+            }}
+        }}
+    };
+
+    auto it = schemes.find(name.toStdString());
+    if (it == schemes.end()) {
+        spdlog::warn("TerminalView::setColorScheme: unknown scheme '{}'", name.toStdString());
+        return;
+    }
+
+    const Scheme& s = it->second;
+    setForegroundColor(s.fg);
+    setBackgroundColor(s.bg);
+
+    ColorPalette& pal = model_.palette();
+    for (size_t i = 0; i < s.pal.size(); ++i) {
+        pal.colors[i] = colorToAbgr(s.pal[i]);
+    }
+    pal.defaultFg = colorToAbgr(s.fg);
+    pal.defaultBg = colorToAbgr(s.bg);
+
+    update();
+    spdlog::info("Terminal color scheme set to: {}", name.toStdString());
 }
 
 void TerminalView::keyPressEvent(QKeyEvent* event)

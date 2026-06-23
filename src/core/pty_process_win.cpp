@@ -11,6 +11,7 @@
 #include <QThread>
 #include <QMutex>
 #include <QWaitCondition>
+#include <QDateTime>
 #include <spdlog/spdlog.h>
 
 // ── ConPTY API 类型和函数声明 ──
@@ -117,12 +118,16 @@ private:
     QByteArray  readBuffer_;
     bool        running_;
     int         exitCode_;
+    bool        stopping_ = false;
+    QDateTime   stopStartTime_;
 
     // 异步读取线程
     PtyReadThread* readThread_ = nullptr;
 
     // 退出检查定时器
     QTimer*     exitTimer_ = nullptr;
+
+    static constexpr int STOP_TIMEOUT_MS = 2000;
 };
 
 PFN_CreatePseudoConsole_T  PtyProcessWin::s_fnCreate_ = nullptr;
@@ -148,6 +153,7 @@ PtyProcessWin::PtyProcessWin(QObject* parent)
     , hChildThread_(INVALID_HANDLE_VALUE)
     , running_(false)
     , exitCode_(0)
+    , stopping_(false)
 {
 }
 
@@ -450,6 +456,8 @@ void PtyProcessWin::checkExit()
     if (!GetExitCodeProcess(hChildProcess_, &code)) {
         running_ = false;
         exitCode_ = -1;
+        if (exitTimer_) exitTimer_->stop();
+        cleanup();
         emit finished(-1);
         return;
     }
@@ -465,8 +473,18 @@ void PtyProcessWin::checkExit()
 
         if (exitTimer_) exitTimer_->stop();
 
+        cleanup();
         emit finished(exitCode_);
         spdlog::info("ConPTY: process exited, code={}", exitCode_);
+        return;
+    }
+
+    // 如果正在终止且超时, 强制结束进程
+    if (stopping_ && stopStartTime_.isValid() &&
+        stopStartTime_.msecsTo(QDateTime::currentDateTimeUtc()) > STOP_TIMEOUT_MS) {
+        spdlog::warn("ConPTY: terminate timeout, forcing kill");
+        TerminateProcess(hChildProcess_, 1);
+        // 下一轮 checkExit 会检测到退出并 cleanup
     }
 }
 
@@ -515,6 +533,10 @@ void PtyProcessWin::terminate()
         return;
     }
 
+    if (stopping_) return;  // 已经在终止中
+    stopping_ = true;
+    stopStartTime_ = QDateTime::currentDateTimeUtc();
+
     // 1. 通过 PTY 输入管道发送 Ctrl+C (ETX = 0x03)
     //    ConPTY 会将其转换为控制台 Ctrl+C 事件
     //    注意: GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0) 会发送到调用进程的进程组,
@@ -525,13 +547,8 @@ void PtyProcessWin::terminate()
         WriteFile(hInWrite_, &ctrlC, 1, &written, nullptr);
     }
 
-    // 2. 等待进程退出 (给 2 秒时间)
-    if (WaitForSingleObject(hChildProcess_, 2000) == WAIT_TIMEOUT) {
-        // 3. 超时则强制终止
-        TerminateProcess(hChildProcess_, 1);
-    }
-
-    cleanup();
+    // 2. 不阻塞等待; checkExit() 会检测进程退出并 cleanup
+    //    如果 2 秒后仍未退出, checkExit() 会强制终止
 }
 
 bool PtyProcessWin::isRunning() const

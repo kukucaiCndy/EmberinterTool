@@ -23,6 +23,7 @@ TerminalTabPage::~TerminalTabPage()
 
 QString TerminalTabPage::tabTitle() const
 {
+    if (!customTitle_.isEmpty()) return customTitle_;
     switch (type_) {
     case TabType::CMD:
         return QString::fromUtf8("[终端] %1").arg(shellName_);
@@ -173,6 +174,9 @@ void TerminalTabPage::closeConnection()
 {
     spdlog::debug("TerminalTabPage::closeConnection: view_={}, this={}", (void*)view_.data(), (void*)this);
     if (view_) {
+        // 先断开 view 的所有信号, 防止 terminate() 触发 shellExited
+        // 回调访问正在被销毁的 this
+        disconnect(view_, nullptr, this, nullptr);
         view_->terminate();
     }
     connected_ = false;

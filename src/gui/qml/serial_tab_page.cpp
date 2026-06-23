@@ -128,6 +128,7 @@ SerialTabPage::~SerialTabPage()
 
 QString SerialTabPage::tabTitle() const
 {
+    if (!customTitle_.isEmpty()) return customTitle_;
     return QString::fromUtf8("[串口] %1").arg(portName_);
 }
 

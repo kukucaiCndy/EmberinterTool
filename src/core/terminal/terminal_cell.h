@@ -60,29 +60,30 @@ struct TerminalCell {
 /// 在小端系统上内存布局为 [R, G, B, A]，与 GL_UNSIGNED_BYTE 直接兼容
 struct ColorPalette {
     /// 标准 16 色 (0-7: 标准, 8-15: 亮色) — ABGR 格式
+    /// 默认使用 VGA/Windows Console 配色, 与 MSYS2 mintty 暗色主题接近
     uint32_t colors[16] = {
-        0xff000000,             // 0: 黑   (R=0, G=0, B=0, A=255)
-        0xff000080,             // 1: 红   (R=128, G=0, B=0, A=255)
-        0xff008000,             // 2: 绿   (R=0, G=128, B=0, A=255)
-        0xff008080,             // 3: 黄   (R=128, G=128, B=0, A=255)
-        0xff800000,             // 4: 蓝   (R=0, G=0, B=128, A=255)
-        0xff800080,             // 5: 品红 (R=128, G=0, B=128, A=255)
-        0xff808000,             // 6: 青   (R=0, G=128, B=128, A=255)
-        0xffc0c0c0,             // 7: 白   (R=192, G=192, B=192, A=255)
-        0xff808080,             // 8: 亮黑
-        0xff0000ff,             // 9: 亮红 (R=255, G=0, B=0, A=255)
-        0xff00ff00,             // 10: 亮绿 (R=0, G=255, B=0, A=255)
-        0xff00ffff,             // 11: 亮黄 (R=255, G=255, B=0, A=255)
-        0xffff0000,             // 12: 亮蓝 (R=0, G=0, B=255, A=255)
-        0xffff00ff,             // 13: 亮品红
-        0xffffff00,             // 14: 亮青
-        0xffffffff,             // 15: 亮白
+        0xff000000,             // 0: 黑
+        0xff0000aa,             // 1: 红   #AA0000
+        0xff00aa00,             // 2: 绿   #00AA00
+        0xff0055aa,             // 3: 黄   #AA5500
+        0xffaa0000,             // 4: 蓝   #0000AA
+        0xffaa00aa,             // 5: 品红 #AA00AA
+        0xffaaaa00,             // 6: 青   #00AAAA
+        0xffaaaaaa,             // 7: 白   #AAAAAA
+        0xff555555,             // 8: 亮黑 #555555
+        0xff5555ff,             // 9: 亮红 #FF5555
+        0xff55ff55,             // 10: 亮绿 #55FF55
+        0xff55ffff,             // 11: 亮黄 #FFFF55
+        0xffff5555,             // 12: 亮蓝 #5555FF
+        0xffff55ff,             // 13: 亮品红 #FF55FF
+        0xffffff55,             // 14: 亮青 #55FFFF
+        0xffffffff,             // 15: 亮白 #FFFFFF
     };
 
-    /// 默认前景色 (白色不透明)
-    uint32_t defaultFg = 0xffffffff;
-    /// 默认背景色 (深色背景)
-    uint32_t defaultBg = 0xff1e1e2e;
+    /// 默认前景色 (浅灰)
+    uint32_t defaultFg = 0xffaaaaaa;
+    /// 默认背景色 (纯黑, MSYS2 暗色终端风格)
+    uint32_t defaultBg = 0xff000000;
 
     /// 获取 256 色中的指定颜色
     uint32_t color256(int index) const;

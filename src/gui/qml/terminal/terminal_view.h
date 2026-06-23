@@ -71,10 +71,14 @@ public:
     Q_INVOKABLE void writeInput(const QByteArray& data);
     Q_INVOKABLE void terminate();
     Q_INVOKABLE bool isRunning() const;
+    Q_INVOKABLE void setColorScheme(const QString& name);
 
     /// 获取终端模型 (供 synchronize 使用)
     TerminalModel& model() { return model_; }
     const TerminalModel& model() const { return model_; }
+
+    /// 是否已销毁 (供 renderer 检查)
+    bool isDestroyed() const { return destroyed_; }
 
     GlyphAtlas& atlas() { return atlas_; }
 
@@ -135,9 +139,9 @@ private:
     qreal cellWidth_ = 8;
     qreal cellHeight_ = 16;
 
-    // 颜色
-    QColor fgColor_ = QColor(0xD4, 0xD4, 0xD4);
-    QColor bgColor_ = QColor(0x1E, 0x1E, 0x2E);
+    // 颜色 (MSYS2 暗色终端默认: 浅灰前景 + 黑色背景)
+    QColor fgColor_ = QColor(0xCC, 0xCC, 0xCC);
+    QColor bgColor_ = QColor(0x00, 0x00, 0x00);
     QColor cursorColor_ = QColor(0xF5, 0xE0, 0xDC);
 
     // 光标
@@ -159,4 +163,7 @@ private:
 
     // 自动滚动到底部
     bool autoScroll_ = true;
+
+    // 标记 view 是否已进入析构
+    bool destroyed_ = false;
 };

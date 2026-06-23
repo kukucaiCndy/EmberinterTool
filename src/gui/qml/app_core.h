@@ -171,6 +171,18 @@ public:
     Q_INVOKABLE void loadTabContent(int index, QObject* container);
     Q_INVOKABLE QObject* getTabPage(int index);
 
+    // Tab 右键菜单操作
+    Q_INVOKABLE void renameTab(int index, const QString& name);
+    Q_INVOKABLE void toggleConnection(int index);
+    Q_INVOKABLE void deleteSavedPortForTab(int index);
+    Q_INVOKABLE int findSavedPortForTab(int index) const;
+
+    // 会话列表右键菜单操作
+    Q_INVOKABLE int findTabForSavedPort(int savedIndex) const;
+    Q_INVOKABLE void toggleSavedPort(int savedIndex);
+    Q_INVOKABLE void closeTabForSavedPort(int savedIndex);
+    Q_INVOKABLE void renameSavedPort(int savedIndex, const QString& name);
+
     // 连接向导
     Q_INVOKABLE void showWizard();
     Q_INVOKABLE void confirmConnection(const QJsonObject& params);

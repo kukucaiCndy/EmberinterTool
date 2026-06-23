@@ -285,6 +285,16 @@ ApplicationWindow {
                             onClicked: function(mouse) {
                                 if (mouse.button === Qt.RightButton) {
                                     sessionContextMenu.sessionIndex = index
+                                    sessionContextMenu.sessionType = model.type
+                                    sessionContextMenu.sessionSummary = model.summary
+                                    sessionContextMenu.connected = false
+                                    // 检查是否已有对应 Tab 及其连接状态
+                                    var tabIdx = appCore.findTabForSavedPort(index)
+                                    sessionContextMenu.tabIndex = tabIdx
+                                    if (tabIdx >= 0) {
+                                        var page = appCore.getTabPage(tabIdx)
+                                        sessionContextMenu.connected = page ? page.connected : false
+                                    }
                                     sessionContextMenu.popup()
                                 } else {
                                     appCore.connectSavedPort(index)
@@ -297,10 +307,46 @@ ApplicationWindow {
                         Menu {
                             id: sessionContextMenu
                             property int sessionIndex: -1
+                            property int sessionType: -1
+                            property string sessionSummary: ""
+                            property bool connected: false
+                            property int tabIndex: -1
+
+                            // 连接/断开 (串口/SSH) 或 打开/关闭 (终端)
                             MenuItem {
-                                text: "连接"
-                                onTriggered: appCore.connectSavedPort(sessionContextMenu.sessionIndex)
+                                text: {
+                                    if (sessionContextMenu.sessionType === 1) {
+                                        return sessionContextMenu.connected ? "关闭终端" : "打开终端"
+                                    } else {
+                                        return sessionContextMenu.connected ? "断开连接" : "连接"
+                                    }
+                                }
+                                onTriggered: appCore.toggleSavedPort(sessionContextMenu.sessionIndex)
                             }
+
+                            MenuItem {
+                                text: "重命名"
+                                onTriggered: {
+                                    renameDialog.savedPortIndex = sessionContextMenu.sessionIndex
+                                    renameDialog.isSavedPort = true
+                                    renameDialog.currentName = sessionContextMenu.sessionSummary
+                                    renameDialog.open()
+                                }
+                            }
+
+                            // 关闭 Tab (仅串口/SSH, CMD 终端直接打开/关闭, 没有常驻 Tab)
+                            MenuItem {
+                                text: "关闭"
+                                visible: sessionContextMenu.sessionType === 0 || sessionContextMenu.sessionType === 1
+                                height: visible ? implicitHeight : 0
+                                onTriggered: appCore.closeTabForSavedPort(sessionContextMenu.sessionIndex)
+                            }
+
+                            MenuSeparator {
+                                visible: sessionContextMenu.sessionType === 0 || sessionContextMenu.sessionType === 1
+                                height: visible ? implicitHeight : 0
+                            }
+
                             MenuItem {
                                 text: "删除"
                                 onTriggered: appCore.removeSavedPort(sessionContextMenu.sessionIndex)
@@ -544,7 +590,7 @@ ApplicationWindow {
 
                             delegate: Rectangle {
                                 id: tabDelegate
-                                width: Math.min(200, tabTitle.implicitWidth + 44)
+                                width: Math.max(140, Math.min(220, tabTitle.implicitWidth + 56))
                                 height: ListView.view.height
                                 color: {
                                     if (index === appCore.currentTabIndex) return DesignSystem.bgPrimary
@@ -585,7 +631,7 @@ ApplicationWindow {
 
                                     // 关闭按钮 (悬停或选中时显示)
                                     Rectangle {
-                                        z: 2
+                                        z: 10
                                         width: 20; height: 20; radius: DesignSystem.radiusSm
                                         color: tabCloseHover.containsMouse ? DesignSystem.error + "1A" : "transparent"
                                         visible: tabHoverArea.containsMouse || index === appCore.currentTabIndex
@@ -602,17 +648,25 @@ ApplicationWindow {
                                             id: tabCloseHover
                                             anchors.fill: parent
                                             hoverEnabled: true
+                                            z: 10
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: appCore.closeTab(index)
+                                            propagateComposedEvents: false
+                                            onClicked: {
+                                                appCore.closeTab(index)
+                                                mouse.accepted = true
+                                            }
                                         }
                                     }
                                 }
 
+                                // 点击切换 Tab (z:-1 确保不遮挡关闭按钮)
                                 MouseArea {
                                     id: tabHoverArea
                                     anchors.fill: parent
+                                    z: -1
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
+                                    acceptedButtons: Qt.LeftButton
                                     onClicked: appCore.setCurrentTab(index)
                                 }
                             }
@@ -787,6 +841,68 @@ ApplicationWindow {
     // ═══════════════════════════════════════════════
     // 弹出层 (Popups)
     // ═══════════════════════════════════════════════
+
+    // 重命名对话框 (支持 Tab 重命名和会话重命名)
+    Dialog {
+        id: renameDialog
+        property int tabIndex: -1
+        property int savedPortIndex: -1
+        property bool isSavedPort: false
+        property string currentName: ""
+        anchors.centerIn: parent
+        modal: true
+        title: isSavedPort ? "重命名会话" : "重命名 Tab"
+        background: Rectangle {
+            color: DesignSystem.bgSecondary; radius: DesignSystem.radiusLg
+            border.width: 1; border.color: DesignSystem.border
+        }
+
+        contentItem: ColumnLayout {
+            spacing: DesignSystem.spaceMd
+            TextField {
+                id: renameInput
+                text: renameDialog.currentName
+                Layout.preferredWidth: 280
+                font.family: DesignSystem.fontBody; font.pixelSize: DesignSystem.fontSizeLg
+                color: DesignSystem.textPrimary
+                selectByMouse: true; focus: true
+                background: Rectangle {
+                    color: DesignSystem.bgTertiary; radius: DesignSystem.radiusSm
+                    border.width: 1; border.color: renameInput.activeFocus ? DesignSystem.accent : DesignSystem.border
+                }
+                onAccepted: renameDialog.accept()
+            }
+        }
+
+        footer: RowLayout {
+            spacing: DesignSystem.spaceSm
+            Layout.alignment: Qt.AlignRight
+            Rectangle {
+                width: 64; height: 30; radius: DesignSystem.radiusSm
+                color: cancelRenameHover.containsMouse ? DesignSystem.hover : DesignSystem.bgTertiary
+                border.width: 1; border.color: DesignSystem.border
+                Text { anchors.centerIn: parent; text: "取消"; color: DesignSystem.textSecondary; font.pixelSize: 12 }
+                MouseArea { id: cancelRenameHover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: renameDialog.reject() }
+            }
+            Rectangle {
+                width: 64; height: 30; radius: DesignSystem.radiusSm
+                color: confirmRenameHover.containsMouse ? DesignSystem.accentHover : DesignSystem.accent
+                Text { anchors.centerIn: parent; text: "确定"; color: DesignSystem.textInverse; font.pixelSize: 12; font.bold: true }
+                MouseArea { id: confirmRenameHover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: renameDialog.accept() }
+            }
+        }
+
+        onOpened: { renameInput.text = currentName; renameInput.selectAll(); renameInput.forceActiveFocus() }
+        onAccepted: {
+            if (renameInput.text.trim().length > 0) {
+                if (isSavedPort) {
+                    appCore.renameSavedPort(savedPortIndex, renameInput.text)
+                } else {
+                    appCore.renameTab(tabIndex, renameInput.text)
+                }
+            }
+        }
+    }
 
     // 连接向导
     ConnectionWizard {

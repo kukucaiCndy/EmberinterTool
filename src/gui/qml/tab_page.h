@@ -21,6 +21,14 @@ public:
     virtual void connectTo(const QJsonObject& params) = 0;
     virtual void closeConnection() = 0;  // 重命名以避免隐藏 QObject::disconnect()
 
+    // 重命名 Tab (用户自定义标题优先于自动生成)
+    void setTabTitle(const QString& title) {
+        customTitle_ = title;
+        emit tabTitleChanged();
+    }
+    bool hasCustomTitle() const { return !customTitle_.isEmpty(); }
+    QString customTitle() const { return customTitle_; }
+
     virtual void clearContent() {}
     virtual void exportContent(const QString& path) { Q_UNUSED(path); }
 
@@ -32,6 +40,9 @@ signals:
     void txBytesChanged(qint64 bytes);
     void statusChanged(bool connected);
     void tabTitleChanged();
+
+protected:
+    QString customTitle_;  // 用户自定义标题, 空则使用自动生成的标题
 };
 
 #endif

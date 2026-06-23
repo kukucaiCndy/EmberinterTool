@@ -34,26 +34,32 @@ Rectangle {
             Layout.fillWidth: true; Layout.preferredHeight: DesignSystem.termStatusHeight
             color: DesignSystem.bgSecondary
 
+            Rectangle {
+                anchors.bottom: parent.bottom; width: parent.width; height: 1
+                color: DesignSystem.border
+            }
+
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 6; anchors.rightMargin: 6
-                spacing: DesignSystem.spaceMd
+                anchors.leftMargin: DesignSystem.spaceSm; anchors.rightMargin: 6
+                spacing: DesignSystem.spaceSm
 
-                // 进程状态指示器
-                RowLayout { spacing: 6
+                // 状态点 + 状态文字 (与 SerialTab 统一风格)
+                RowLayout {
+                    spacing: 6
                     Rectangle {
-                        width: 8; height: 8; radius: 4
+                        width: 6; height: 6; radius: 3
                         color: (root.tabPage && root.tabPage.connected) ? DesignSystem.success : DesignSystem.textSecondary
                         SequentialAnimation on opacity {
                             running: root.tabPage && root.tabPage.connected
                             loops: Animation.Infinite
-                            NumberAnimation { from: 1.0; to: 0.4; duration: 800; easing.type: Easing.InOutSine }
-                            NumberAnimation { from: 0.4; to: 1.0; duration: 800; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 1.0; to: 0.5; duration: 1000; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 0.5; to: 1.0; duration: 1000; easing.type: Easing.InOutSine }
                         }
                     }
                     Text {
-                        text: (root.tabPage && root.tabPage.connected) ? "运行中" : "未运行"
-                        color: DesignSystem.textSecondary
+                        text: (root.tabPage && root.tabPage.connected) ? "运行中" : "已停止"
+                        color: (root.tabPage && root.tabPage.connected) ? DesignSystem.success : DesignSystem.textSecondary
                         font.family: DesignSystem.fontBody; font.pixelSize: DesignSystem.fontSizeSm
                     }
                 }
@@ -64,9 +70,18 @@ Rectangle {
                 Text {
                     text: termView.shellName
                     color: DesignSystem.accent
-                    font.family: DesignSystem.fontBody; font.pixelSize: DesignSystem.fontSizeSm
+                    font.family: DesignSystem.fontMono; font.pixelSize: DesignSystem.fontSizeSm
                     elide: Text.ElideRight; Layout.fillWidth: true
                 }
+
+                // 终端尺寸
+                Text {
+                    text: termView.columns + "\u00D7" + termView.rows
+                    color: DesignSystem.textSecondary
+                    font.family: DesignSystem.fontMono; font.pixelSize: DesignSystem.fontSizeXs
+                }
+
+                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: DesignSystem.border }
 
                 // 字体缩放
                 RowLayout { spacing: 2
@@ -79,12 +94,10 @@ Rectangle {
                     TermBtn { text: "A+"; onClicked: { if (termView.fontSize < 48) termView.fontSize++ } }
                 }
 
-                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: DesignSystem.border }
-
                 // 配色方案选择
                 ComboBox {
                     id: colorSchemeCombo
-                    Layout.preferredWidth: 110; Layout.preferredHeight: 22
+                    Layout.preferredWidth: 120; Layout.preferredHeight: 22
                     model: root.colorSchemes.map(function(s) { return s.name })
                     currentIndex: 0
                     font.family: DesignSystem.fontBody; font.pixelSize: DesignSystem.fontSizeXs
@@ -100,17 +113,9 @@ Rectangle {
                     onCurrentIndexChanged: {
                         if (currentIndex >= 0 && currentIndex < root.colorSchemes.length) {
                             var cs = root.colorSchemes[currentIndex]
-                            termView.foregroundColor = cs.fg
-                            termView.backgroundColor = cs.bg
+                            termView.setColorScheme(cs.name)
                         }
                     }
-                }
-
-                // 终端尺寸
-                Text {
-                    text: termView.columns + "\u00D7" + termView.rows
-                    color: DesignSystem.textSecondary
-                    font.family: DesignSystem.fontMono; font.pixelSize: DesignSystem.fontSizeXs
                 }
             }
         }
@@ -135,8 +140,7 @@ Rectangle {
                 // 应用初始配色方案 (index 0)
                 if (root.colorSchemes.length > 0) {
                     var cs = root.colorSchemes[0]
-                    termView.foregroundColor = cs.fg
-                    termView.backgroundColor = cs.bg
+                    termView.setColorScheme(cs.name)
                 }
                 // 真正获取焦点，否则键盘事件无法到达终端视图
                 termView.forceActiveFocus()

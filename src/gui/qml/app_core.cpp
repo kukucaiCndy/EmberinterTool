@@ -90,6 +90,10 @@ void AppCore::removeTab(TabPage* page)
 {
     spdlog::debug("AppCore::removeTab: type={}, title={}",
                   static_cast<int>(page->tabType()), page->tabTitle().toStdString());
+
+    // 先断开所有信号, 防止 closeConnection/deleteLater 期间信号触发回调
+    disconnect(page, nullptr, this, nullptr);
+
     if (page->tabType() == TabType::Serial) {
         auto* sp = qobject_cast<SerialTabPage*>(page);
         if (sp) {
@@ -234,6 +238,37 @@ void AppCore::connectSavedPort(int index)
     const SavedPort& sp = ports[index];
     spdlog::debug("AppCore::connectSavedPort: index={}, type={}, name={}",
                   index, static_cast<int>(sp.type), sp.name.toStdString());
+
+    // ── 去重: 检查是否已有相同配置的 Tab，有则切换 ──
+    for (int i = 0; i < tabModel_.count(); ++i) {
+        TabPage* existing = tabModel_.tabAt(i);
+        if (!existing || existing->tabType() != sp.type) continue;
+
+        auto it = tabConnParams_.find(existing);
+        if (it == tabConnParams_.end()) continue;
+        const QJsonObject& cp = it.value();
+
+        bool match = false;
+        switch (sp.type) {
+        case TabType::Serial:
+            match = (cp["port"].toString() == sp.port);
+            break;
+        case TabType::CMD:
+            match = (cp["shell"].toString() == sp.extra["shell"].toString("cmd.exe"));
+            break;
+        case TabType::SSH:
+            match = (cp["host"].toString() == sp.extra["host"].toString() &&
+                     cp["user"].toString() == sp.extra["user"].toString());
+            break;
+        default: break;
+        }
+
+        if (match) {
+            spdlog::info("Tab already exists, switching to index={}", i);
+            setCurrentTab(i);
+            return;
+        }
+    }
 
     switch (sp.type) {
     case TabType::Serial: {
@@ -396,12 +431,19 @@ void AppCore::closeTab(int index)
     spdlog::debug("AppCore::closeTab: index={}, title={}", index,
                   page ? page->tabTitle().toStdString() : "null");
     if (page) {
+        // 1. 断开信号 + 清理引用 (防止回调访问无效状态)
         removeTab(page);
+        // 2. 关闭底层连接
         page->closeConnection();
+        // 3. 延迟删除对象 (等当前事件循环完成)
         page->deleteLater();
     }
+    // 4. 从模型移除 (触发 QML Repeater 移除 Loader)
     tabModel_.removeTab(index);
-    currentTabIdx_ = qMin(currentTabIdx_, tabModel_.count() - 1);
+
+    // 5. 调整当前索引 (必须在 removeTab 之后, 确保索引有效)
+    if (currentTabIdx_ >= tabModel_.count())
+        currentTabIdx_ = tabModel_.count() - 1;
     spdlog::debug("AppCore::closeTab: after close, count={}, currentTabIdx={}",
                   tabModel_.count(), currentTabIdx_);
     emit currentTabIndexChanged();
@@ -749,4 +791,153 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
     }
 
     ipcServer_->sendResponse(clientId, reqId, false, data);
+}
+
+// ── Tab 右键菜单操作 ──────────────────────────────────────
+
+void AppCore::renameTab(int index, const QString& name)
+{
+    TabPage* page = tabModel_.tabAt(index);
+    if (!page) return;
+    QString trimmed = name.trimmed();
+    if (trimmed.isEmpty()) return;
+    page->setTabTitle(trimmed);
+    // 触发 TabModel 数据更新 (标题角色)
+    QModelIndex idx = tabModel_.index(index);
+    emit tabModel_.dataChanged(idx, idx, {TabModel::TitleRole});
+    spdlog::info("Tab renamed: index={}, name={}", index, trimmed.toStdString());
+}
+
+void AppCore::toggleConnection(int index)
+{
+    TabPage* page = tabModel_.tabAt(index);
+    if (!page) return;
+
+    if (page->isConnected()) {
+        page->closeConnection();
+        spdlog::info("Connection toggled off: index={}", index);
+    } else {
+        // 重新连接: 使用保存的连接参数
+        auto it = tabConnParams_.find(page);
+        if (it != tabConnParams_.end()) {
+            page->connectTo(it.value());
+            spdlog::info("Connection toggled on: index={}", index);
+        }
+    }
+}
+
+int AppCore::findSavedPortForTab(int index) const
+{
+    TabPage* page = tabModel_.tabAt(index);
+    if (!page) return -1;
+
+    auto it = tabConnParams_.constFind(page);
+    if (it == tabConnParams_.constEnd()) return -1;
+    const QJsonObject& cp = it.value();
+
+    const auto& ports = ConfigManager::instance().config().savedPorts;
+    for (int i = 0; i < ports.size(); ++i) {
+        const SavedPort& sp = ports[i];
+        if (sp.type != page->tabType()) continue;
+
+        bool match = false;
+        switch (sp.type) {
+        case TabType::Serial:
+            match = (cp["port"].toString() == sp.port);
+            break;
+        case TabType::CMD:
+            match = (cp["shell"].toString() == sp.extra["shell"].toString("cmd.exe"));
+            break;
+        case TabType::SSH:
+            match = (cp["host"].toString() == sp.extra["host"].toString() &&
+                     cp["user"].toString() == sp.extra["user"].toString());
+            break;
+        default: break;
+        }
+        if (match) return i;
+    }
+    return -1;
+}
+
+void AppCore::deleteSavedPortForTab(int index)
+{
+    int savedIdx = findSavedPortForTab(index);
+    if (savedIdx >= 0) {
+        removeSavedPort(savedIdx);
+        spdlog::info("Saved port deleted for tab: index={}, savedIdx={}", index, savedIdx);
+    }
+}
+
+// ── 会话列表右键菜单操作 ──────────────────────────────────
+
+int AppCore::findTabForSavedPort(int savedIndex) const
+{
+    const auto& ports = ConfigManager::instance().config().savedPorts;
+    if (savedIndex < 0 || savedIndex >= ports.size()) return -1;
+
+    const SavedPort& sp = ports[savedIndex];
+    for (int i = 0; i < tabModel_.count(); ++i) {
+        TabPage* page = tabModel_.tabAt(i);
+        if (!page || page->tabType() != sp.type) continue;
+
+        auto it = tabConnParams_.constFind(page);
+        if (it == tabConnParams_.constEnd()) continue;
+        const QJsonObject& cp = it.value();
+
+        bool match = false;
+        switch (sp.type) {
+        case TabType::Serial:
+            match = (cp["port"].toString() == sp.port);
+            break;
+        case TabType::CMD:
+            match = (cp["shell"].toString() == sp.extra["shell"].toString("cmd.exe"));
+            break;
+        case TabType::SSH:
+            match = (cp["host"].toString() == sp.extra["host"].toString() &&
+                     cp["user"].toString() == sp.extra["user"].toString());
+            break;
+        default: break;
+        }
+        if (match) return i;
+    }
+    return -1;
+}
+
+void AppCore::toggleSavedPort(int savedIndex)
+{
+    int tabIdx = findTabForSavedPort(savedIndex);
+    if (tabIdx >= 0) {
+        // Tab 已存在, 切换连接状态
+        toggleConnection(tabIdx);
+    } else {
+        // Tab 不存在, 创建并连接
+        connectSavedPort(savedIndex);
+    }
+}
+
+void AppCore::closeTabForSavedPort(int savedIndex)
+{
+    int tabIdx = findTabForSavedPort(savedIndex);
+    if (tabIdx >= 0) {
+        closeTab(tabIdx);
+    }
+}
+
+void AppCore::renameSavedPort(int savedIndex, const QString& name)
+{
+    auto& config = ConfigManager::instance().config();
+    if (savedIndex < 0 || savedIndex >= config.savedPorts.size()) return;
+    QString trimmed = name.trimmed();
+    if (trimmed.isEmpty()) return;
+
+    config.savedPorts[savedIndex].name = trimmed;
+    ConfigManager::instance().save();
+    savedPortModel_.load();
+
+    // 如果对应的 Tab 已打开, 也重命名 Tab
+    int tabIdx = findTabForSavedPort(savedIndex);
+    if (tabIdx >= 0) {
+        renameTab(tabIdx, trimmed);
+    }
+    spdlog::info("Saved port renamed: index={}, name={}", savedIndex, trimmed.toStdString());
 }

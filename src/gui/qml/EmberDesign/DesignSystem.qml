@@ -113,9 +113,19 @@ QtObject {
     // ═══════════════════════════════════════════════
     readonly property var terminalSchemes: [
         {
-            name: "Catppuccin Dark",
-            fg: "#CDD6F4",
-            bg: "#1E1E2E"
+            name: "MSYS2 Dark",
+            fg: "#CCCCCC",
+            bg: "#000000"
+        },
+        {
+            name: "VS Code Dark+",
+            fg: "#D4D4D4",
+            bg: "#1E1E1E"
+        },
+        {
+            name: "VS Code Dark",
+            fg: "#CCCCCC",
+            bg: "#181818"
         },
         {
             name: "Light",

@@ -121,12 +121,12 @@ Rectangle {
                     Rectangle {
                         width: 6; height: 6; radius: 3
                         color: (root.tabPage && root.tabPage.connected) ? DesignSystem.success : DesignSystem.textSecondary
-                        // 呼吸脉冲
+                        // 呼吸脉冲 (与 TerminalTab 统一参数)
                         SequentialAnimation on opacity {
                             running: root.tabPage && root.tabPage.connected
                             loops: Animation.Infinite
-                            NumberAnimation { from: 1.0; to: 0.5; duration: 800; easing.type: Easing.InOutSine }
-                            NumberAnimation { from: 0.5; to: 1.0; duration: 800; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 1.0; to: 0.5; duration: 1000; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 0.5; to: 1.0; duration: 1000; easing.type: Easing.InOutSine }
                         }
                     }
                     Text {
@@ -136,7 +136,7 @@ Rectangle {
                     }
                     Text {
                         text: root.tabPage && root.tabPage.connected ? "已连接" : "未连接"
-                        color: DesignSystem.textSecondary
+                        color: (root.tabPage && root.tabPage.connected) ? DesignSystem.success : DesignSystem.textSecondary
                         font.family: DesignSystem.fontBody; font.pixelSize: DesignSystem.fontSizeXs
                     }
                 }
