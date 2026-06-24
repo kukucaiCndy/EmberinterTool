@@ -76,6 +76,26 @@ void AppCore::addTab(TabPage* page)
     connect(page, &TabPage::txBytesChanged, this, &AppCore::onTabTxChanged);
     connect(page, &TabPage::statusChanged, this, &AppCore::onTabStatusChanged);
 
+    // 终端 Tab: 连接 dataReceived 信号, 转发到 IPC 订阅客户端
+    if (page->tabType() == TabType::CMD || page->tabType() == TabType::SSH) {
+        auto* tp = qobject_cast<TerminalTabPage*>(page);
+        if (tp) {
+            int newTabIndex = tabModel_.count();  // 即将插入的索引
+            connect(tp, &TerminalTabPage::dataReceived, this, [this, tp, newTabIndex](const QByteArray& data) {
+                if (ipcServer_) {
+                    // 查找当前实际索引 (防止 Tab 顺序变化)
+                    int idx = -1;
+                    for (int i = 0; i < tabModel_.count(); ++i) {
+                        if (tabModel_.tabAt(i) == tp) { idx = i; break; }
+                    }
+                    if (idx >= 0) {
+                        ipcServer_->sendTerminalOutput(idx, data, tp->tabType());
+                    }
+                }
+            });
+        }
+    }
+
     tabModel_.addTab(page);
     currentTabIdx_ = tabModel_.count() - 1;
     spdlog::debug("AppCore::addTab: tabModel count={}, currentTabIdx={}",
@@ -657,6 +677,163 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
         return;
     }
 
+    // ── Tab 管理命令 (新增) ──
+
+    if (cmd == "list_tabs") {
+        QJsonArray tabs;
+        for (int i = 0; i < tabModel_.count(); ++i) {
+            TabPage* t = tabModel_.tabAt(i);
+            if (!t) continue;
+            QJsonObject tab;
+            tab["index"] = i;
+            tab["type"] = tabTypeToString(t->tabType());
+            tab["title"] = t->tabTitle();
+            tab["connected"] = t->isConnected();
+            tab["is_current"] = (i == currentTabIdx_);
+            tabs.append(tab);
+        }
+        data["tabs"] = tabs;
+        data["current_index"] = currentTabIdx_;
+        data["count"] = tabModel_.count();
+        ipcServer_->sendResponse(clientId, reqId, true, data);
+        return;
+    }
+
+    if (cmd == "switch_tab") {
+        int index = params["index"].toInt(-1);
+        if (index < 0 || index >= tabModel_.count()) {
+            data["message"] = QString("Invalid tab index: %1").arg(index);
+            ipcServer_->sendResponse(clientId, reqId, false, data);
+            return;
+        }
+        setCurrentTab(index);
+        data["message"] = QString("Switched to tab %1").arg(index);
+        data["current_index"] = currentTabIdx_;
+        ipcServer_->sendResponse(clientId, reqId, true, data);
+        return;
+    }
+
+    if (cmd == "close_tab") {
+        int index = params["index"].toInt(currentTabIdx_);
+        if (index < 0 || index >= tabModel_.count()) {
+            data["message"] = QString("Invalid tab index: %1").arg(index);
+            ipcServer_->sendResponse(clientId, reqId, false, data);
+            return;
+        }
+        closeTab(index);
+        data["message"] = QString("Tab %1 closed").arg(index);
+        ipcServer_->sendResponse(clientId, reqId, true, data);
+        return;
+    }
+
+    // create_tab: 创建 CMD/SSH 终端 Tab
+    if (cmd == "create_tab") {
+        QString type = params["type"].toString().toLower();
+        QJsonObject connParams;
+
+        if (type == "cmd" || type == "terminal") {
+            QString shell = params.value("shell").toString("cmd.exe");
+            connParams["shell"] = shell;
+            auto* tp = new TerminalTabPage(TabType::CMD, this);
+            addTab(tp);
+            tp->connectTo(connParams);
+            tabConnParams_[tp] = connParams;
+            tabConnectTimes_[tp] = QDateTime::currentDateTime();
+
+            data["message"] = QString("Terminal tab created: %1").arg(shell);
+            data["tab_index"] = tabModel_.count() - 1;
+            data["tab_type"] = tabTypeToString(TabType::CMD);
+            ipcServer_->sendResponse(clientId, reqId, true, data);
+            return;
+        }
+
+        if (type == "ssh") {
+            QString host = params.value("host").toString();
+            int port = params.value("port").toInt(22);
+            QString user = params.value("user").toString();
+            if (host.isEmpty()) {
+                data["message"] = "SSH requires 'host' parameter";
+                ipcServer_->sendResponse(clientId, reqId, false, data);
+                return;
+            }
+            connParams["host"] = host;
+            connParams["port"] = port;
+            connParams["user"] = user;
+            connParams["password"] = params.value("password").toString();
+
+            auto* tp = new TerminalTabPage(TabType::SSH, this);
+            addTab(tp);
+            tp->connectTo(connParams);
+            tabConnParams_[tp] = connParams;
+            tabConnectTimes_[tp] = QDateTime::currentDateTime();
+
+            data["message"] = QString("SSH tab created: %1@%2:%3").arg(user, host).arg(port);
+            data["tab_index"] = tabModel_.count() - 1;
+            data["tab_type"] = tabTypeToString(TabType::SSH);
+            ipcServer_->sendResponse(clientId, reqId, true, data);
+            return;
+        }
+
+        data["message"] = QString("Unknown tab type: %1 (use cmd/ssh)").arg(type);
+        ipcServer_->sendResponse(clientId, reqId, false, data);
+        return;
+    }
+
+    // 终端输出订阅
+    if (cmd == "subscribe_tab") {
+        int index = params["index"].toInt(-1);
+        if (index < 0 || index >= tabModel_.count()) {
+            data["message"] = QString("Invalid tab index: %1").arg(index);
+            ipcServer_->sendResponse(clientId, reqId, false, data);
+            return;
+        }
+        ipcServer_->subscribeTab(clientId, index);
+        data["message"] = QString("Subscribed to tab %1").arg(index);
+        data["tab_index"] = index;
+        ipcServer_->sendResponse(clientId, reqId, true, data);
+        return;
+    }
+
+    if (cmd == "unsubscribe_tab") {
+        ipcServer_->unsubscribeTab(clientId);
+        data["message"] = "Unsubscribed";
+        ipcServer_->sendResponse(clientId, reqId, true, data);
+        return;
+    }
+
+    // 终端输入: 向指定 Tab (默认当前) 的终端发送原始数据
+    if (cmd == "terminal_input") {
+        int index = params.value("tab_index").toInt(currentTabIdx_);
+        if (index < 0 || index >= tabModel_.count()) {
+            data["message"] = QString("Invalid tab index: %1").arg(index);
+            ipcServer_->sendResponse(clientId, reqId, false, data);
+            return;
+        }
+        TabPage* target = tabModel_.tabAt(index);
+        auto* tp = qobject_cast<TerminalTabPage*>(target);
+        if (!tp) {
+            data["message"] = QString("Tab %1 is not a terminal tab").arg(index);
+            ipcServer_->sendResponse(clientId, reqId, false, data);
+            return;
+        }
+        // data 字段: 优先用 base64 (保留原始字节), 否则用 text 字符串
+        QByteArray input;
+        if (params.contains("data")) {
+            input = QByteArray::fromBase64(params["data"].toString().toLatin1());
+        } else if (params.contains("text")) {
+            input = params["text"].toString().toUtf8();
+        }
+        if (input.isEmpty()) {
+            data["message"] = "No input data provided (use 'data' base64 or 'text')";
+            ipcServer_->sendResponse(clientId, reqId, false, data);
+            return;
+        }
+        tp->writeRawInput(input);
+        data["message"] = QString("Sent %1 bytes to tab %2").arg(input.size()).arg(index);
+        ipcServer_->sendResponse(clientId, reqId, true, data);
+        return;
+    }
+
     if (cmd == "get_status") {
         data["connected"] = page ? page->isConnected() : false;
         data["rx_bytes"] = rxBytes_;
@@ -664,6 +841,8 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
         data["buffer_size"] = 0;
         if (page) {
             data["port"] = page->tabTitle();
+            data["tab_type"] = tabTypeToString(page->tabType());
+            data["tab_index"] = currentTabIdx_;
         }
         ipcServer_->sendResponse(clientId, reqId, true, data);
         return;
@@ -700,6 +879,7 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
         }
         sp->connectTo(c);
         data["message"] = "Connecting...";
+        data["tab_index"] = currentTabIdx_;
         ipcServer_->sendResponse(clientId, reqId, true, data);
         return;
     }

@@ -16,6 +16,15 @@ ApplicationWindow {
     title: "尘智 — EmberInterDebugTool"
     visible: true
 
+    // 启动时居中显示在屏幕正中 (防止超出屏幕上方无法拖动)
+    Component.onCompleted: {
+        var screen = Qt.application.screens[0]
+        if (screen) {
+            x = screen.virtualX + (screen.width - width) / 2
+            y = screen.virtualY + (screen.height - height) / 2
+        }
+    }
+
     color: DesignSystem.bgPrimary
 
     // ═══════════════════════════════════════════════
@@ -45,9 +54,9 @@ ApplicationWindow {
     // ═══════════════════════════════════════════════
     Connections {
         target: appCore
-        function onWizardRequested()     { connectionWizard.open() }
-        function onSettingsRequested()   { settingsDialog.open() }
-        function onAboutRequested()      { aboutDialog.open() }
+        function onWizardRequested()     { console.log("[Main] wizardRequested"); connectionWizard.open() }
+        function onSettingsRequested()   { console.log("[Main] settingsRequested, opening settingsDialog"); settingsDialog.open() }
+        function onAboutRequested()      { console.log("[Main] aboutRequested, opening aboutDialog"); aboutDialog.open() }
     }
 
     // ═══════════════════════════════════════════════
@@ -377,15 +386,74 @@ ApplicationWindow {
                         Layout.bottomMargin: DesignSystem.spaceXs
                     }
 
-                    SidebarNavBtn {
-                        label: "设置"
-                        iconText: DesignSystem.iconSettings
-                        onClicked: appCore.openSettings()
+                    // 设置按钮
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 32; radius: DesignSystem.radiusSm
+                        color: settingsNavHover.containsMouse ? DesignSystem.hover : "transparent"
+                        Behavior on color { ColorAnimation { duration: DesignSystem.animFast } }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: DesignSystem.spaceSm
+                            anchors.rightMargin: DesignSystem.spaceSm
+                            spacing: DesignSystem.spaceSm
+                            Text {
+                                text: "设置"
+                                color: DesignSystem.textSecondary
+                                font.family: DesignSystem.fontBody; font.pixelSize: 12
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: DesignSystem.iconSettings
+                                color: DesignSystem.textSecondary
+                                font.family: DesignSystem.fontBody; font.pixelSize: 14
+                            }
+                        }
+                        MouseArea {
+                            id: settingsNavHover
+                            anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                console.log("[Sidebar] 设置 clicked, opening directly")
+                                settingsDialog.open()
+                            }
+                        }
                     }
-                    SidebarNavBtn {
-                        label: "关于"
-                        iconText: DesignSystem.iconInfo
-                        onClicked: appCore.openAbout()
+
+                    // 关于按钮
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 32; radius: DesignSystem.radiusSm
+                        color: aboutNavHover.containsMouse ? DesignSystem.hover : "transparent"
+                        Behavior on color { ColorAnimation { duration: DesignSystem.animFast } }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: DesignSystem.spaceSm
+                            anchors.rightMargin: DesignSystem.spaceSm
+                            spacing: DesignSystem.spaceSm
+                            Text {
+                                text: "关于"
+                                color: DesignSystem.textSecondary
+                                font.family: DesignSystem.fontBody; font.pixelSize: 12
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: DesignSystem.iconInfo
+                                color: DesignSystem.textSecondary
+                                font.family: DesignSystem.fontBody; font.pixelSize: 14
+                            }
+                        }
+                        MouseArea {
+                            id: aboutNavHover
+                            anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                console.log("[Sidebar] 关于 clicked, opening directly")
+                                aboutDialog.open()
+                            }
+                        }
                     }
                 }
             }
@@ -907,60 +975,19 @@ ApplicationWindow {
     // 连接向导
     ConnectionWizard {
         id: connectionWizard
+        parent: Overlay.overlay
     }
 
     // 设置对话框
     SettingsDialog {
         id: settingsDialog
+        parent: Overlay.overlay
     }
 
     // 关于 / 更新
     AboutDialog {
         id: aboutDialog
+        parent: Overlay.overlay
     }
 
-    // ═══════════════════════════════════════════════
-    // 内联组件 (In-components)
-    // ═══════════════════════════════════════════════
-
-    // ── 侧边栏导航按钮 ──
-    component SidebarNavBtn: Rectangle {
-        property string label: ""
-        property string iconText: ""
-        signal clicked()
-
-        width: parent ? parent.width : 200
-        height: 32; radius: DesignSystem.radiusSm
-        color: navHover.containsMouse ? DesignSystem.hover : "transparent"
-        Behavior on color { ColorAnimation { duration: DesignSystem.animFast } }
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: DesignSystem.spaceSm
-            anchors.rightMargin: DesignSystem.spaceSm
-            spacing: DesignSystem.spaceSm
-
-            Text {
-                text: parent.parent.label
-                color: DesignSystem.textSecondary
-                font.family: DesignSystem.fontBody
-                font.pixelSize: 12
-            }
-            Item { Layout.fillWidth: true }
-            Text {
-                text: parent.parent.iconText
-                color: DesignSystem.textSecondary
-                font.family: DesignSystem.fontBody
-                font.pixelSize: 14
-                visible: text !== ""
-            }
-        }
-        MouseArea {
-            id: navHover
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: parent.clicked()
-        }
-    }
-}
+} // ApplicationWindow 结束

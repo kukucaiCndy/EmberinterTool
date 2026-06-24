@@ -32,9 +32,15 @@ public:
 
     Q_INVOKABLE void writeInput(const QString& text);
 
+    /// 向终端写入原始字节 (供 IPC 调用, 不经过 QML)
+    void writeRawInput(const QByteArray& data);
+
 signals:
     void connectedChanged();
     void shellNameChanged();
+    /// 终端输出数据 (转发自 TerminalModel::dataReceived)
+    /// 供 AppCore 转发到 IPC 订阅客户端
+    void dataReceived(const QByteArray& data);
 
 private:
     void doConnect(const QJsonObject& params);

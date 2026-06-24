@@ -2,11 +2,12 @@
 
 > 微尘藏星火，终端蕴尘智
 
-基于 Qt6 QML 的跨平台串口监控调试工具，提供 GUI 图形界面和 CLI 命令行两种使用方式，两者通过 IPC 实时联动。
+基于 Qt6 QML 的跨平台串口监控调试工具，提供 GUI 图形界面和 CLI 命令行两种使用方式，两者通过 IPC 实时联动。**支持 AI 通过 CLI 持久化操作终端**，像人一样在 bash/cmd/SSH 终端里持续工作。
 
 ## 特性
 
 - 🖥️ **GUI + CLI 双模式** - GUI 负责串口连接管理，CLI 可通过命令行或交互模式与 GUI 联动
+- 🤖 **AI 终端操作** - CLI 支持创建/订阅/操作终端 Tab，AI 可持久化在终端里工作（编译、调试、部署）
 - 🗂️ **会话管理** - 左侧"我的会话"列表管理多个串口配置，右侧标签页对应显示
 - 🎨 **彩色日志** - 按日志级别着色（TX 绿色、ERROR 红色、WARN 黄色等），发送/接收数据一目了然
 - ⏱️ **时间戳** - 每条日志自动添加时间戳
@@ -16,6 +17,7 @@
 - 🌙 **暗色主题** - 基于 QML Design System 的暗色主题，保护眼睛
 - 📡 **IPC 实时通信** - CLI 和 GUI 通过 QLocalSocket 实时同步状态
 - 🖥️ **多终端支持** - 串口终端、本地命令行终端 (cmd/bash/powershell)、SSH 远程终端
+- 🔧 **MSYS2 环境集成** - 自动识别 MSYS2 bash，正确加载 /mingw64 环境变量
 
 ## 系统要求
 
@@ -144,6 +146,23 @@ CLI 通过 IPC 与 GUI 通信，**使用前请先启动 GUI 程序**。
 | `--get-status` | 显示当前连接状态 |
 | `--get-logs N` | 获取最近 N 条日志 |
 
+#### 终端管理命令（新增）
+
+| 参数 | 说明 |
+|------|------|
+| `--create-terminal [SHELL]` | 创建本地终端（cmd.exe/powershell.exe/bash），返回 tab index |
+| `--create-ssh TARGET` | 创建 SSH 终端，TARGET=user@host 或配合 --ssh-host |
+| `--ssh-host HOST` | SSH 主机 |
+| `--ssh-user USER` | SSH 用户名 |
+| `--ssh-port PORT` | SSH 端口（默认 22） |
+| `--list-tabs` | 列出所有 Tab（串口/终端/SSH） |
+| `--switch-tab INDEX` | 切换活动 Tab |
+| `--close-tab INDEX` | 关闭指定 Tab |
+| `--terminal-input TEXT` | 向终端 Tab 发送文本（自动追加 \r\n） |
+| `--tab-index INDEX` | 指定目标 Tab 索引（配合 --terminal-input） |
+| `--subscribe-tab INDEX` | 订阅终端 Tab 输出并进入交互模式 |
+| `--raw-output` | 终端输出原始字节模式（配合 --subscribe-tab） |
+
 #### 帮助
 
 | 参数 | 说明 |
@@ -245,6 +264,54 @@ $ ./serial-monitor-cli -p COM3 --cli
 > quit
 [SYSTEM] CLI disconnected (GUI service continues)
 ```
+
+### AI 持久化操作终端（新增）
+
+CLI 支持创建和管理终端 Tab，AI 可以像人一样在终端里持续工作。完整流程：
+
+```bash
+# 1. 创建终端（记录返回的 tab_index）
+./serial-monitor-cli --create-terminal bash
+# 输出: [OK] Terminal tab created: bash (tab_index=0, type=cmd)
+
+# 2. 后台订阅，持续接收终端输出（AI 的"眼睛"）
+./serial-monitor-cli --subscribe-tab 0 --raw-output &
+
+# 3. 反复发命令，观察输出（AI 的决策循环）
+./serial-monitor-cli --terminal-input "cd /project" --tab-index 0
+./serial-monitor-cli --terminal-input "git status" --tab-index 0
+./serial-monitor-cli --terminal-input "make build" --tab-index 0
+
+# 4. 完成后清理
+./serial-monitor-cli --close-tab 0
+```
+
+**终端交互模式**（`--subscribe-tab`）：进入后可直接输入命令，特殊命令以 `:` 开头：
+
+```
+$ ./serial-monitor-cli --subscribe-tab 0 --raw-output
+============================================================
+  终端交互模式 - Tab #0
+  已订阅终端输出, 输入命令直接发送到终端
+  特殊命令: :help :quit :tabs :tab N :close N :sub N :unsub :raw
+============================================================
+
+ls -la                    # 直接发送到终端
+:tabs                     # 列出所有 Tab
+:tab 1                    # 切换并订阅 Tab 1
+:close 0                  # 关闭 Tab 0
+:raw                      # 切换原始字节输出模式
+:quit                     # 退出
+```
+
+**支持的 Shell 类型**：
+
+| Shell | 命令 | 说明 |
+|-------|------|------|
+| MSYS2 Bash | `--create-terminal bash` | 自动识别 MSYS2 路径，加载 /mingw64 环境 |
+| CMD | `--create-terminal cmd.exe` | Windows 命令行 |
+| PowerShell | `--create-terminal powershell.exe` | Windows PowerShell |
+| SSH | `--create-ssh user@host` | SSH 远程终端 |
 
 ## 架构概览
 

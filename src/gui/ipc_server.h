@@ -27,6 +27,15 @@ public:
                       bool success, const QJsonObject& data);
     int clientCount() const;
 
+    /// 终端输出订阅: 客户端订阅指定 Tab 的输出流
+    /// 订阅后, 仅该客户端收到对应 Tab 的 terminal_output 消息
+    void subscribeTab(const QString& clientId, int tabIndex);
+    void unsubscribeTab(const QString& clientId);
+    bool isSubscribed(const QString& clientId, int tabIndex) const;
+
+    /// 定向推送终端输出给所有订阅了该 Tab 的客户端
+    void sendTerminalOutput(int tabIndex, const QByteArray& data, TabType tabType);
+
 signals:
     void clientConnected(const QString& clientId);
     void clientDisconnected(const QString& clientId);
@@ -43,6 +52,10 @@ private:
     QVector<QLocalSocket*> clients_;
     QVector<QByteArray> readBuffers_;
     int nextClientId_ = 1;
+
+    /// 终端输出订阅表: clientId → 订阅的 tabIndex
+    /// 一个客户端同一时间只订阅一个 Tab (符合"AI 持久操作一个终端"场景)
+    QHash<QString, int> tabSubscriptions_;
 
     static int clientIdOf(QLocalSocket* client);
 

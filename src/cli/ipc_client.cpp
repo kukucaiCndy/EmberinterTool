@@ -112,6 +112,14 @@ void IPCClient::processBuffer()
             QString id = msg["id"].toString();
             bool success = payload["success"].toBool();
             emit responseReceived(id, success, payload);
+        } else if (type == "terminal_output") {
+            // 终端输出: Base64 解码原始字节
+            int tabIndex = payload["tab_index"].toInt(-1);
+            QString tabType = payload["tab_type"].toString();
+            QByteArray data = QByteArray::fromBase64(payload["data"].toString().toLatin1());
+            if (tabIndex >= 0 && !data.isEmpty()) {
+                emit terminalOutputReceived(tabIndex, data, tabType);
+            }
         } else if (type == "error") {
             QString message = payload["message"].toString();
             emit errorOccurred(message);

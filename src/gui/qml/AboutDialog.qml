@@ -8,8 +8,8 @@ Popup {
     id: root
     width: 540
     height: 540
-    x: (parent.width - width) / 2
-    y: (parent.height - height) / 2
+    x: (window ? window.width : 1366) / 2 - width / 2
+    y: (window ? window.height : 768) / 2 - height / 2
     modal: true
     closePolicy: Popup.CloseOnEscape
     padding: 0

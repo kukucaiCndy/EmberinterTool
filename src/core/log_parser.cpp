@@ -31,24 +31,40 @@ QString LogParser::detectLevel(const QString& line)
 {
     QString upper = line.trimmed().toUpper();
 
+    // 1. 检测行首前缀: "LEVEL ...", "[LEVEL] ...", "<LEVEL> ..."
     auto startsWithLevel = [&upper](const QString& prefix) {
         return upper.startsWith(prefix) || upper.startsWith("[" + prefix + "]") ||
                upper.startsWith("<" + prefix + ">");
     };
 
-    if (startsWithLevel("ERROR") || startsWithLevel("ERR") || upper.contains("FAIL")) {
+    // 2. 检测行中任意位置的 [LEVEL] 标签 (支持 "[INFO][其他] message" 这种格式)
+    auto containsBracketLevel = [&upper](const QString& prefix) {
+        return upper.contains("[" + prefix + "]");
+    };
+
+    // ERROR (优先级最高)
+    if (startsWithLevel("ERROR") || startsWithLevel("ERR") ||
+        containsBracketLevel("ERROR") || containsBracketLevel("ERR") ||
+        upper.contains("FAIL")) {
         return "ERROR";
     }
-    if (startsWithLevel("WARN") || startsWithLevel("WARNING")) {
+    // WARN (支持 WARNG 变体)
+    if (startsWithLevel("WARN") || startsWithLevel("WARNING") || startsWithLevel("WARNG") ||
+        containsBracketLevel("WARN") || containsBracketLevel("WARNING") ||
+        containsBracketLevel("WARNG")) {
         return "WARN";
     }
-    if (startsWithLevel("INFO")) {
+    // INFO
+    if (startsWithLevel("INFO") || containsBracketLevel("INFO")) {
         return "INFO";
     }
-    if (startsWithLevel("DEBUG") || startsWithLevel("DBG")) {
+    // DEBUG
+    if (startsWithLevel("DEBUG") || startsWithLevel("DBG") ||
+        containsBracketLevel("DEBUG") || containsBracketLevel("DBG")) {
         return "DEBUG";
     }
-    if (startsWithLevel("TRACE")) {
+    // TRACE
+    if (startsWithLevel("TRACE") || containsBracketLevel("TRACE")) {
         return "TRACE";
     }
     return "";
@@ -64,16 +80,11 @@ LogEntry LogParser::parseLine(const QByteArray& rawData, const QString& portName
 
 QString LogParser::formatDisplay(const LogEntry& entry, bool showTimestamp)
 {
+    // 直接显示原始文本 (若包含 [INFO] 等标签则保留，避免重复添加 [level] 前缀)
     if (showTimestamp) {
-        if (entry.level.isEmpty()) {
-            return QString("[%1] %2").arg(entry.timestamp, entry.text);
-        }
-        return QString("[%1] [%2] %3").arg(entry.timestamp, entry.level, entry.text);
+        return QString("[%1] %2").arg(entry.timestamp, entry.text);
     }
-    if (entry.level.isEmpty()) {
-        return entry.text;
-    }
-    return QString("[%1] %2").arg(entry.level, entry.text);
+    return entry.text;
 }
 
 QString LogParser::formatHex(const QByteArray& data, int baseOffset)
@@ -116,10 +127,14 @@ QString LogParser::formatHex(const QByteArray& data, int baseOffset)
 
 QString LogParser::levelColorHex(const QString& level)
 {
-    if (level == "ERROR") return "#D32F2F";
-    if (level == "WARN")  return "#F9A825";
-    if (level == "INFO")  return "#388E3C";
-    if (level == "DEBUG") return "#0288D1";
-    if (level == "TRACE") return "#757575";
-    return "#333333";
+    // 与 DesignSystem.qml 的日志颜色保持一致 (适合深色背景 #0D1117)
+    // 避免使用 #333333 这类在黑底上几乎不可见的颜色
+    if (level == "ERROR") return "#F85149";  // 红色 (error)
+    if (level == "WARN")  return "#D29922";  // 黄色 (warning)
+    if (level == "INFO")  return "#E6EDF3";  // 主文本白 (textPrimary)
+    if (level == "DEBUG") return "#8B949E";  // 次要灰 (textSecondary)
+    if (level == "TRACE") return "#8B949E";  // 次要灰 (textSecondary)
+    if (level == "TX")    return "#7EE787";  // 发送绿
+    if (level == "RX")    return "#79C0FF";  // 接收蓝
+    return "#E6EDF3";  // 默认使用主文本色，确保可见
 }

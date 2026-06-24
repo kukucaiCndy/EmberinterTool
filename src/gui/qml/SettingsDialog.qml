@@ -8,8 +8,8 @@ Popup {
     id: root
     width: 520
     height: 460
-    x: (parent.width - width) / 2
-    y: (parent.height - height) / 2
+    x: (window ? window.width : 1366) / 2 - width / 2
+    y: (window ? window.height : 768) / 2 - height / 2
     modal: true
     closePolicy: Popup.CloseOnEscape
     padding: 0
@@ -27,14 +27,19 @@ Popup {
     property bool autoCheckUpdate: false
 
     onOpened: {
-        // 从配置加载设置
-        var s = appCore.loadSettings()
-        if (s) {
-            root.fontSizeIdx = Math.max(0, Math.min(4, (s.fontSize || 12) - 10))
-            root.maxLogLines = s.maxLogLines || 10000
-            root.autoScroll = s.autoScroll !== undefined ? s.autoScroll : true
-            fontSizeSlider.value = root.fontSizeIdx
-            autoScrollSwitch.checked = root.autoScroll
+        console.log("[SettingsDialog] opened, loading settings...")
+        try {
+            var s = appCore.loadSettings()
+            if (s) {
+                root.fontSizeIdx = Math.max(0, Math.min(4, (s.fontSize || 12) - 10))
+                root.maxLogLines = s.maxLogLines || 10000
+                root.autoScroll = s.autoScroll !== undefined ? s.autoScroll : true
+                fontSizeSlider.value = root.fontSizeIdx
+                autoScrollSwitch.checked = root.autoScroll
+                console.log("[SettingsDialog] settings loaded: fontSize=" + root.fontSizeIdx)
+            }
+        } catch (e) {
+            console.log("[SettingsDialog] ERROR loading settings: " + e)
         }
     }
 

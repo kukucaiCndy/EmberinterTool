@@ -32,6 +32,13 @@ public:
                                           qint64 uptimeSeconds,
                                           TabType tabType = TabType::Serial);
 
+    /// 构建终端输出消息 (GUI→CLI 定向推送)
+    /// tabIndex: 目标 Tab 索引
+    /// data: PTY 原始输出字节
+    static QJsonObject buildTerminalOutputMessage(int tabIndex,
+                                                   const QByteArray& data,
+                                                   TabType tabType);
+
     static QJsonObject buildPortInfo(const QString& name, const QString& description,
                                      const QString& vid, const QString& pid,
                                      bool recommended);

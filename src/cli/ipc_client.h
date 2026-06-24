@@ -25,6 +25,8 @@ signals:
     void statusChanged(const QJsonObject& status);
     void responseReceived(const QString& id, bool success, const QJsonObject& data);
     void errorOccurred(const QString& error);
+    /// 终端输出数据 (订阅后推送): tabIndex, data(原始字节), tabType
+    void terminalOutputReceived(int tabIndex, const QByteArray& data, const QString& tabType);
 
 private slots:
     void onConnected();

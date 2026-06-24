@@ -1,6 +1,9 @@
 #include "terminal_tab_page.h"
 #include "terminal/terminal_view.h"
 #include <QJsonObject>
+#include <QFileInfo>
+#include <QDir>
+#include <QProcessEnvironment>
 #include <spdlog/spdlog.h>
 
 TerminalTabPage::TerminalTabPage(TabType type, QObject* parent)
@@ -66,6 +69,11 @@ void TerminalTabPage::attachView(TerminalView* view)
         emit tabTitleChanged();
     });
 
+    // 转发终端输出数据 (PTY → TerminalModel → 这里 → IPC 订阅客户端)
+    // 注意: dataReceived 是 TerminalModel 的信号, 通过 view_->model() 访问
+    connect(&view_->model(), &TerminalModel::dataReceived,
+            this, &TerminalTabPage::dataReceived);
+
     // 如果有暂存的连接参数，自动连接
     if (!pendingParams_.isEmpty()) {
         spdlog::debug("TerminalTabPage::attachView: consuming pendingParams, this={}", (void*)this);
@@ -96,9 +104,6 @@ void TerminalTabPage::doConnect(const QJsonObject& params)
     switch (type_) {
     case TabType::CMD: {
         QString shell = params["shell"].toString("cmd.exe");
-        shellName_ = shell;
-        emit shellNameChanged();
-        emit tabTitleChanged();
 
         QStringList args;
         bool isMsysBash = false;
@@ -114,17 +119,77 @@ void TerminalTabPage::doConnect(const QJsonObject& params)
             // 否则无控制终端时会立刻退出。
             args << "--login" << "-i";
             isMsysBash = true;
+
+            // 关键修复: 当 shell 是 "bash" (无完整路径) 时, 系统 PATH 里
+            // Git Bash (C:/Program Files/Git/bin/bash) 可能优先于 MSYS2,
+            // 导致启动的是 Git Bash 而非 MSYS2 bash, /mingw64 挂载点缺失,
+            // mingw32-make 等工具找不到。
+            // 解决: 探测常见的 MSYS2 安装路径, 优先使用 MSYS2 的 bash。
+            if (QFileInfo(shell).isRelative() &&
+                (shell == "bash" || shell == "bash.exe")) {
+                // 候选 MSYS2 bash 路径 (按优先级排序)
+                static const QStringList msysBashCandidates = {
+                    "C:/msys64/usr/bin/bash.exe",
+                    "C:/msys2/usr/bin/bash.exe",
+                    "D:/msys64/usr/bin/bash.exe",
+                    "D:/msys2/usr/bin/bash.exe",
+                };
+                for (const auto& candidate : msysBashCandidates) {
+                    if (QFile::exists(candidate)) {
+                        spdlog::info("TerminalTabPage: resolved 'bash' to MSYS2: {}",
+                                     candidate.toStdString());
+                        shell = candidate;
+                        break;
+                    }
+                }
+            }
         }
+
+        shellName_ = shell;
+        emit shellNameChanged();
+        emit tabTitleChanged();
+
         spdlog::debug("TerminalTabPage::doConnect: calling view_->startShell({}, {}), view_={}",
                       shell.toStdString(), args.size(), (void*)view_);
 
         if (isMsysBash) {
             // MSYS2/Git Bash 需要正确的 TERM 和 MSYSTEM 环境变量才能保持交互
+            // 关键: 必须设置 PATH 包含 MSYS2 的 bin 目录, 否则 bash --login
+            // 无法找到 /etc/profile 依赖的基础工具 (printenv/cygpath 等),
+            // 导致 PATH 不会被正确初始化, mingw32-make 等命令找不到。
+            //
+            // 探测 MSYS2 安装根目录 (bash 通常位于 <msys_root>/usr/bin/bash.exe)
+            QString msysRoot;
+            QString bashDir = QFileInfo(shell).absolutePath();
+            if (bashDir.endsWith("/usr/bin", Qt::CaseInsensitive) ||
+                bashDir.endsWith("\\usr\\bin", Qt::CaseInsensitive)) {
+                msysRoot = QDir::cleanPath(bashDir + "/../..");
+            }
+            // 若 bash 来自 mingw64/bin (少见), 取上两级
+            if (msysRoot.isEmpty() &&
+                (bashDir.endsWith("/mingw64/bin", Qt::CaseInsensitive) ||
+                 bashDir.endsWith("\\mingw64\\bin", Qt::CaseInsensitive))) {
+                msysRoot = QDir::cleanPath(bashDir + "/../..");
+            }
+
             QVariantMap env;
             env["TERM"] = "xterm-256color";
             env["MSYSTEM"] = "MINGW64";
             env["MINGW_PREFIX"] = "/mingw64";
             env["CHERE_INVOKING"] = "1";
+            env["MSYS2_PATH_TYPE"] = "inherit";
+            // 预设 MSYS2 标准路径 (Windows 格式, 供 bash 启动阶段使用)
+            // bash --login 读取 /etc/profile 后会用 MSYS2 格式路径覆盖
+            if (!msysRoot.isEmpty()) {
+                QString msysRootWin = QDir::toNativeSeparators(msysRoot);
+                env["PATH"] = msysRootWin + "\\mingw64\\bin;" +
+                              msysRootWin + "\\usr\\local\\bin;" +
+                              msysRootWin + "\\usr\\bin;" +
+                              msysRootWin + "\\bin;" +
+                              QProcessEnvironment::systemEnvironment().value("PATH");
+                spdlog::info("TerminalTabPage: MSYS2 root={}, PATH prefix set",
+                             msysRoot.toStdString());
+            }
             view_->startShellWithEnv(shell, args, env);
         } else {
             view_->startShell(shell, args);
@@ -192,4 +257,13 @@ void TerminalTabPage::writeInput(const QString& text)
         view_->writeInput(text.toUtf8());
     else
         spdlog::warn("TerminalTabPage::writeInput: view_ is null, dropping input");
+}
+
+void TerminalTabPage::writeRawInput(const QByteArray& data)
+{
+    if (view_) {
+        view_->writeInput(data);
+    } else {
+        spdlog::warn("TerminalTabPage::writeRawInput: view_ is null, dropping {} bytes", data.size());
+    }
 }

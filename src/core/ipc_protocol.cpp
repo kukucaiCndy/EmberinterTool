@@ -62,6 +62,19 @@ QJsonObject IpcProtocol::buildStatusMessage(const QString& port, bool connected,
     return payload;
 }
 
+QJsonObject IpcProtocol::buildTerminalOutputMessage(int tabIndex,
+                                                     const QByteArray& data,
+                                                     TabType tabType)
+{
+    QJsonObject payload;
+    payload["tab_index"] = tabIndex;
+    payload["tab_type"] = tabTypeToString(tabType);
+    // 终端输出可能含任意字节 (含控制序列), 用 Base64 安全传输
+    payload["data"] = QString::fromLatin1(data.toBase64());
+    payload["size"] = data.size();
+    return payload;
+}
+
 QJsonObject IpcProtocol::buildPortInfo(const QString& name, const QString& description,
                                         const QString& vid, const QString& pid,
                                         bool recommended)

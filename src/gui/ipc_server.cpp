@@ -110,6 +110,46 @@ int IPCServer::clientCount() const
     return clients_.size();
 }
 
+void IPCServer::subscribeTab(const QString& clientId, int tabIndex)
+{
+    tabSubscriptions_[clientId] = tabIndex;
+    spdlog::info("IPC client {} subscribed to tab {}", clientId.toStdString(), tabIndex);
+}
+
+void IPCServer::unsubscribeTab(const QString& clientId)
+{
+    tabSubscriptions_.remove(clientId);
+    spdlog::info("IPC client {} unsubscribed", clientId.toStdString());
+}
+
+bool IPCServer::isSubscribed(const QString& clientId, int tabIndex) const
+{
+    auto it = tabSubscriptions_.constFind(clientId);
+    return it != tabSubscriptions_.constEnd() && it.value() == tabIndex;
+}
+
+void IPCServer::sendTerminalOutput(int tabIndex, const QByteArray& data, TabType tabType)
+{
+    if (tabSubscriptions_.isEmpty()) return;
+
+    QByteArray message = IpcProtocol::buildMessage(
+        "terminal_output",
+        IpcProtocol::buildTerminalOutputMessage(tabIndex, data, tabType));
+
+    for (auto it = tabSubscriptions_.constBegin(); it != tabSubscriptions_.constEnd(); ++it) {
+        if (it.value() != tabIndex) continue;
+        bool ok = false;
+        int id = it.key().toInt(&ok);
+        if (!ok) continue;
+        for (auto* client : clients_) {
+            if (clientIdOf(client) == id) {
+                sendToClient(client, message);
+                break;
+            }
+        }
+    }
+}
+
 void IPCServer::onNewConnection()
 {
     while (server_->hasPendingConnections()) {
@@ -143,6 +183,8 @@ void IPCServer::onDisconnected()
         QString clientId = QString::number(clientIdOf(client));
         spdlog::info("IPC client disconnected: {}", clientId.toStdString());
         emit clientDisconnected(clientId);
+        // 清理终端输出订阅
+        tabSubscriptions_.remove(clientId);
         clients_.removeAt(index);
         readBuffers_.removeAt(index);
     }
