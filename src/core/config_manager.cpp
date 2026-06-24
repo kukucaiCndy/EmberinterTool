@@ -68,6 +68,7 @@ bool ConfigManager::load(const QString& path)
     config_.display.bufferSize = display["buffer_size"].toInt(10000);
     config_.display.autoScroll = display["auto_scroll"].toBool(true);
     config_.display.autoReconnect = display["auto_reconnect"].toBool(true);
+    config_.display.autoCheckUpdate = display["auto_check_update"].toBool(true);
 
     QJsonObject filters = root["filters"].toObject();
     QJsonArray filterArr = filters["history"].toArray();
@@ -160,6 +161,7 @@ bool ConfigManager::save(const QString& path)
     display["buffer_size"] = config_.display.bufferSize;
     display["auto_scroll"] = config_.display.autoScroll;
     display["auto_reconnect"] = config_.display.autoReconnect;
+    display["auto_check_update"] = config_.display.autoCheckUpdate;
 
     QJsonObject filters;
     QJsonArray filterArr;

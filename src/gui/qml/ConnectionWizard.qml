@@ -376,14 +376,17 @@ Popup {
                 // 取消
                 Rectangle {
                     width: 72; height: 32; radius: DesignSystem.radiusMd
-                    color: "transparent"
+                    color: cancelHover.containsMouse ? DesignSystem.hover : "transparent"
+                    border.width: 1; border.color: DesignSystem.border
                     Text {
                         anchors.centerIn: parent
-                        text: DesignSystem.iconClose
+                        text: "取消"
                         color: DesignSystem.textSecondary
+                        font.family: DesignSystem.fontBody
                         font.pixelSize: DesignSystem.fontSizeLg
                     }
                     MouseArea {
+                        id: cancelHover
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor

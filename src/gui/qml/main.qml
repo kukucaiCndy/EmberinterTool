@@ -111,13 +111,12 @@ ApplicationWindow {
                         Rectangle {
                             width: 32; height: 32; radius: DesignSystem.radiusSm
                             color: DesignSystem.accent
-                            Text {
+                            Image {
                                 anchors.centerIn: parent
-                                text: "\u5C18" // 尘
-                                color: DesignSystem.textInverse
-                                font.family: DesignSystem.fontHead
-                                font.pixelSize: 18
-                                font.bold: true
+                                width: 24; height: 24
+                                source: "qrc:/icons/logo.png"
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
                             }
                         }
 
@@ -486,13 +485,12 @@ ApplicationWindow {
                         border.width: 1
                         border.color: DesignSystem.accent15
 
-                        Text {
+                        Image {
                             anchors.centerIn: parent
-                            text: "\u5C18" // 尘
-                            color: DesignSystem.accent
-                            font.family: DesignSystem.fontHead
-                            font.pixelSize: 36
-                            font.bold: true
+                            width: 60; height: 60
+                            source: "qrc:/icons/logo.png"
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
                         }
                     }
 
@@ -944,20 +942,22 @@ ApplicationWindow {
 
         footer: RowLayout {
             spacing: DesignSystem.spaceSm
-            Layout.alignment: Qt.AlignRight
+            // 按钮居中显示
+            Item { Layout.fillWidth: true }
             Rectangle {
-                width: 64; height: 30; radius: DesignSystem.radiusSm
+                width: 72; height: 30; radius: DesignSystem.radiusSm
                 color: cancelRenameHover.containsMouse ? DesignSystem.hover : DesignSystem.bgTertiary
                 border.width: 1; border.color: DesignSystem.border
-                Text { anchors.centerIn: parent; text: "取消"; color: DesignSystem.textSecondary; font.pixelSize: 12 }
+                Text { anchors.centerIn: parent; text: "取消"; color: DesignSystem.textSecondary; font.family: DesignSystem.fontBody; font.pixelSize: DesignSystem.fontSizeMd }
                 MouseArea { id: cancelRenameHover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: renameDialog.reject() }
             }
             Rectangle {
-                width: 64; height: 30; radius: DesignSystem.radiusSm
+                width: 72; height: 30; radius: DesignSystem.radiusSm
                 color: confirmRenameHover.containsMouse ? DesignSystem.accentHover : DesignSystem.accent
-                Text { anchors.centerIn: parent; text: "确定"; color: DesignSystem.textInverse; font.pixelSize: 12; font.bold: true }
+                Text { anchors.centerIn: parent; text: "确定"; color: DesignSystem.textInverse; font.family: DesignSystem.fontBody; font.pixelSize: DesignSystem.fontSizeMd; font.bold: true }
                 MouseArea { id: confirmRenameHover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: renameDialog.accept() }
             }
+            Item { Layout.fillWidth: true }
         }
 
         onOpened: { renameInput.text = currentName; renameInput.selectAll(); renameInput.forceActiveFocus() }

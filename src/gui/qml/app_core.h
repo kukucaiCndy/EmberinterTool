@@ -11,6 +11,10 @@
 #include <QDateTime>
 #include <QTimer>
 #include <QSerialPortInfo>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QStandardPaths>
+#include <QDesktopServices>
 #include <spdlog/spdlog.h>
 #include "tab_page.h"       // Qt6 QObject-based
 #include "ipc_server.h"
@@ -190,6 +194,13 @@ public:
     // 设置
     Q_INVOKABLE void saveSettings(int fontSize, int maxLogLines, bool autoScroll);
     Q_INVOKABLE QVariantMap loadSettings();
+    Q_INVOKABLE void saveAutoCheckUpdate(bool enabled);
+
+    // 更新检查 (通过 GitHub API)
+    Q_INVOKABLE void checkUpdate();
+    Q_INVOKABLE QString currentVersion() const;
+    // 下载更新包并在 APP 内显示进度, 下载完成后启动安装程序
+    Q_INVOKABLE void downloadUpdate(const QString& url);
 
 signals:
     void statusTextChanged();
@@ -200,9 +211,15 @@ signals:
     void hasActiveTabChanged();
     void currentTabIndexChanged();
     void availableSerialPortsChanged();
-    void wizardRequested();   // QML 侧弹出连接向导
-    void settingsRequested(); // QML 侧打开设置
-    void aboutRequested();    // QML 侧打开关于
+    void wizardRequested();
+    void settingsRequested();
+    void aboutRequested();
+    // 更新检查结果: latestVersion, downloadUrl, hasUpdate, errorMsg
+    void updateCheckResult(const QJsonObject& result);
+    // 下载进度: receivedBytes, totalBytes, percent (-1=无法获取大小)
+    void updateDownloadProgress(qint64 received, qint64 total, int percent);
+    // 下载完成: filePath (空表示失败), errorMsg
+    void updateDownloadFinished(const QString& filePath, const QString& errorMsg);
 
 private slots:
     void onIpcCommand(const QString& clientId, const QString& cmd,
@@ -235,6 +252,11 @@ private:
 
     QStringList availablePorts_;
     QSet<QString> usedPorts_;   // 当前已打开的串口号
+
+    // 更新检查
+    QNetworkAccessManager* networkManager_;
+    QNetworkReply* downloadReply_;
+    QString downloadFilePath_;
 
     // 每个 Tab 的连接参数和连接时间（用于状态栏显示）
     QHash<TabPage*, QJsonObject> tabConnParams_;

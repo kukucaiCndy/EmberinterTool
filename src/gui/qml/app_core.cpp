@@ -1,6 +1,11 @@
 #include "app_core.h"
 #include <QSerialPortInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QCoreApplication>
+#include <QFile>
 #include <QTimer>
 #include <QDateTime>
 #include <QGuiApplication>
@@ -14,6 +19,8 @@ AppCore::AppCore(QObject* parent)
     , currentTabIdx_(-1)
     , rxBytes_(0)
     , txBytes_(0)
+    , networkManager_(nullptr)
+    , downloadReply_(nullptr)
     , uptimeTimer_(nullptr)
 {
     statusText_ = QString::fromUtf8("就绪");
@@ -507,7 +514,176 @@ QVariantMap AppCore::loadSettings()
     map["hexMode"] = cfg.display.hexMode;
     map["showTimestamp"] = cfg.display.showTimestamp;
     map["autoReconnect"] = cfg.display.autoReconnect;
+    map["autoCheckUpdate"] = cfg.display.autoCheckUpdate;
     return map;
+}
+
+void AppCore::saveAutoCheckUpdate(bool enabled)
+{
+    auto& cfg = ConfigManager::instance().config();
+    cfg.display.autoCheckUpdate = enabled;
+    ConfigManager::instance().save();
+    spdlog::info("Auto check update: {}", enabled);
+}
+
+QString AppCore::currentVersion() const
+{
+    return QString("v%1").arg(QCoreApplication::applicationVersion());
+}
+
+void AppCore::checkUpdate()
+{
+    if (!networkManager_) {
+        networkManager_ = new QNetworkAccessManager(this);
+    }
+
+    // GitHub API: 获取最新 release
+    // 仓库已迁移到 kukucaiCndy/EmberinterTool
+    QNetworkRequest request(QUrl("https://api.github.com/repos/kukucaiCndy/EmberinterTool/releases/latest"));
+    request.setHeader(QNetworkRequest::UserAgentHeader, "EmberInterDebugTool-UpdateCheck");
+    request.setRawHeader("Accept", "application/vnd.github+json");
+
+    spdlog::info("Checking for updates...");
+    QNetworkReply* reply = networkManager_->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        QJsonObject result;
+
+        if (reply->error() != QNetworkReply::NoError) {
+            spdlog::warn("Update check failed: {}", reply->errorString().toStdString());
+            result["error"] = true;
+            result["errorMsg"] = reply->errorString();
+            result["hasUpdate"] = false;
+            emit updateCheckResult(result);
+            return;
+        }
+
+        QByteArray data = reply->readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        QJsonObject release = doc.object();
+
+        QString latestTag = release["tag_name"].toString();
+        QString htmlUrl = release["html_url"].toString();
+        QString releaseName = release["name"].toString();
+        QString body = release["body"].toString();
+
+        // 提取下载链接 (第一个 exe 资产)
+        QString downloadUrl;
+        QJsonArray assets = release["assets"].toArray();
+        for (const auto& a : assets) {
+            QJsonObject asset = a.toObject();
+            QString name = asset["name"].toString();
+            if (name.endsWith(".exe", Qt::CaseInsensitive)) {
+                downloadUrl = asset["browser_download_url"].toString();
+                break;
+            }
+        }
+
+        // 版本比较: 当前版本 vs 最新版本
+        QString curVer = currentVersion();  // v1.3.0
+        bool hasUpdate = false;
+        if (!latestTag.isEmpty()) {
+            // 简单字符串比较 (v1.3.0 < v1.4.0)
+            hasUpdate = (latestTag != curVer);
+            spdlog::info("Update check: current={}, latest={}, hasUpdate={}",
+                         curVer.toStdString(), latestTag.toStdString(), hasUpdate);
+        }
+
+        result["error"] = false;
+        result["hasUpdate"] = hasUpdate;
+        result["currentVersion"] = curVer;
+        result["latestVersion"] = latestTag;
+        result["releaseName"] = releaseName;
+        result["releaseNotes"] = body;
+        result["downloadUrl"] = downloadUrl;
+        result["htmlUrl"] = htmlUrl;
+
+        emit updateCheckResult(result);
+    });
+}
+
+void AppCore::downloadUpdate(const QString& url)
+{
+    if (url.isEmpty()) {
+        emit updateDownloadFinished("", "下载链接为空");
+        return;
+    }
+
+    if (!networkManager_) {
+        networkManager_ = new QNetworkAccessManager(this);
+    }
+
+    // 取消已有下载
+    if (downloadReply_) {
+        downloadReply_->abort();
+        downloadReply_->deleteLater();
+        downloadReply_ = nullptr;
+    }
+
+    // 下载到临时目录
+    QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    // 从 URL 提取文件名
+    QString fileName = url.section('/', -1);
+    if (fileName.isEmpty() || !fileName.endsWith(".exe", Qt::CaseInsensitive)) {
+        fileName = "emberInter-Setup.exe";
+    }
+    downloadFilePath_ = tempDir + "/" + fileName;
+
+    spdlog::info("Downloading update: {} -> {}", url.toStdString(), downloadFilePath_.toStdString());
+
+    QUrl downloadUrl(url);
+    QNetworkRequest request(downloadUrl);
+    request.setHeader(QNetworkRequest::UserAgentHeader, "EmberInterDebugTool-UpdateDownloader");
+
+    downloadReply_ = networkManager_->get(request);
+
+    // 下载进度
+    connect(downloadReply_, &QNetworkReply::downloadProgress,
+            this, [this](qint64 received, qint64 total) {
+        int percent = -1;
+        if (total > 0) {
+            percent = static_cast<int>(received * 100 / total);
+        }
+        emit updateDownloadProgress(received, total, percent);
+    });
+
+    // 下载完成
+    connect(downloadReply_, &QNetworkReply::finished, this, [this]() {
+        if (downloadReply_->error() != QNetworkReply::NoError) {
+            spdlog::warn("Download failed: {}", downloadReply_->errorString().toStdString());
+            emit updateDownloadFinished("", downloadReply_->errorString());
+            downloadReply_->deleteLater();
+            downloadReply_ = nullptr;
+            return;
+        }
+
+        // 保存文件
+        QFile file(downloadFilePath_);
+        if (!file.open(QIODevice::WriteOnly)) {
+            emit updateDownloadFinished("", "无法写入临时文件: " + downloadFilePath_);
+            downloadReply_->deleteLater();
+            downloadReply_ = nullptr;
+            return;
+        }
+        file.write(downloadReply_->readAll());
+        file.close();
+
+        spdlog::info("Download complete: {}", downloadFilePath_.toStdString());
+        emit updateDownloadFinished(downloadFilePath_, "");
+
+        downloadReply_->deleteLater();
+        downloadReply_ = nullptr;
+
+        // 启动安装程序 (异步, 不阻塞退出)
+        bool ok = QDesktopServices::openUrl(QUrl::fromLocalFile(downloadFilePath_));
+        if (ok) {
+            spdlog::info("Installer launched: {}", downloadFilePath_.toStdString());
+            // 提示用户安装程序已启动, 当前程序可退出
+            QTimer::singleShot(2000, qApp, &QCoreApplication::quit);
+        } else {
+            spdlog::error("Failed to launch installer: {}", downloadFilePath_.toStdString());
+        }
+    });
 }
 
 void AppCore::loadTabContent(int index, QObject* container)

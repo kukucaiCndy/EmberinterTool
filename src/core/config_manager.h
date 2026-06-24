@@ -65,6 +65,7 @@ struct DisplayConfig {
     int bufferSize = 10000;
     bool autoScroll = true;
     bool autoReconnect = true;
+    bool autoCheckUpdate = true;   // 自动检查更新 (默认开启)
 };
 
 struct SendConfig {

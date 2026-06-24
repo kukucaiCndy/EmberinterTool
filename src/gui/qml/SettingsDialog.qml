@@ -8,11 +8,45 @@ Popup {
     id: root
     width: 520
     height: 460
-    x: (window ? window.width : 1366) / 2 - width / 2
-    y: (window ? window.height : 768) / 2 - height / 2
     modal: true
     closePolicy: Popup.CloseOnEscape
     padding: 0
+
+    // 居中显示: 使用 Overlay.overlay (弹出层所在的实际父项)
+    // onOpened 时 Overlay 已就绪, 此时计算居中位置最准确
+    onOpened: {
+        var p = parent
+        if (p) {
+            root.x = (p.width - root.width) / 2
+            root.y = (p.height - root.height) / 2
+        }
+        console.log("[SettingsDialog] opened, loading settings...")
+        try {
+            var s = appCore.loadSettings()
+            if (s) {
+                // 字体大小映射: 10->0, 12->1, 14->2, 16->3, 18->4
+                var fs = s.fontSize || 12
+                var idx = 1
+                if (fs <= 10) idx = 0
+                else if (fs <= 12) idx = 1
+                else if (fs <= 14) idx = 2
+                else if (fs <= 16) idx = 3
+                else idx = 4
+                root.fontSizeIdx = idx
+                root.maxLogLines = s.maxLogLines || 10000
+                root.autoScroll = s.autoScroll !== undefined ? s.autoScroll : true
+                root.autoCheckUpdate = s.autoCheckUpdate !== undefined ? s.autoCheckUpdate : true
+                fontSizeSlider.value = root.fontSizeIdx
+                autoScrollSwitch.checked = root.autoScroll
+                updateSwitch.checked = root.autoCheckUpdate
+                // 应用字体缩放
+                DesignSystem.fontScale = root.fontSizeIdx - 1
+                console.log("[SettingsDialog] settings loaded: fontSize=" + root.fontSizeIdx)
+            }
+        } catch (e) {
+            console.log("[SettingsDialog] ERROR loading settings: " + e)
+        }
+    }
 
     background: Rectangle {
         color: DesignSystem.bgSecondary
@@ -25,23 +59,6 @@ Popup {
     property int maxLogLines: 10000
     property bool autoScroll: true
     property bool autoCheckUpdate: false
-
-    onOpened: {
-        console.log("[SettingsDialog] opened, loading settings...")
-        try {
-            var s = appCore.loadSettings()
-            if (s) {
-                root.fontSizeIdx = Math.max(0, Math.min(4, (s.fontSize || 12) - 10))
-                root.maxLogLines = s.maxLogLines || 10000
-                root.autoScroll = s.autoScroll !== undefined ? s.autoScroll : true
-                fontSizeSlider.value = root.fontSizeIdx
-                autoScrollSwitch.checked = root.autoScroll
-                console.log("[SettingsDialog] settings loaded: fontSize=" + root.fontSizeIdx)
-            }
-        } catch (e) {
-            console.log("[SettingsDialog] ERROR loading settings: " + e)
-        }
-    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -112,15 +129,19 @@ Popup {
                 SettingRow {
                     label: "主题"
                     ComboBox {
+                        id: themeCombo
                         Layout.fillWidth: true
                         Layout.preferredHeight: 28
                         model: ["暗黑 (Default)", "明亮 (Light)"]
-                        currentIndex: 0
+                        currentIndex: DesignSystem.theme
                         font.family: DesignSystem.fontBody
                         font.pixelSize: DesignSystem.fontSizeMd
                         background: SettingCBoxBg {}
                         contentItem: SettingCBoxText { t: parent.displayText }
                         indicator: SettingCBoxIndicator {}
+                        onCurrentIndexChanged: {
+                            DesignSystem.setTheme(currentIndex)
+                        }
                     }
                 }
 
@@ -132,7 +153,12 @@ Popup {
                         from: 0; to: 4
                         stepSize: 1
                         value: root.fontSizeIdx
-                        onValueChanged: root.fontSizeIdx = value
+                        onValueChanged: {
+                            root.fontSizeIdx = value
+                            // 实时生效: 字体大小索引映射到 fontScale (0=10px, 1=12px, 2=14px, 3=16px, 4=18px)
+                            // DesignSystem.fontSizeMd 基准是 12+fontScale, 所以 fontScale = fontSizeIdx - 1
+                            DesignSystem.fontScale = value - 1
+                        }
 
                         background: Rectangle {
                             x: fontSizeSlider.leftPadding
@@ -162,11 +188,11 @@ Popup {
                         }
                     }
                     Text {
-                        text: [10, 11, 12, 13, 14][root.fontSizeIdx] + "px"
+                        text: [10, 12, 14, 16, 18][root.fontSizeIdx] + "px"
                         color: DesignSystem.textSecondary
                         font.family: DesignSystem.fontMono
                         font.pixelSize: DesignSystem.fontSizeMd
-                        Layout.preferredWidth: 30
+                        Layout.preferredWidth: 36
                     }
                 }
 
@@ -251,7 +277,10 @@ Popup {
                         id: updateSwitch
                         checked: root.autoCheckUpdate
                         Layout.alignment: Qt.AlignVCenter
-                        onCheckedChanged: root.autoCheckUpdate = checked
+                        onCheckedChanged: {
+                            root.autoCheckUpdate = checked
+                            appCore.saveAutoCheckUpdate(checked)
+                        }
                         indicator: SettingSwitchIndicator {}
                     }
                     Text {
@@ -362,6 +391,10 @@ Popup {
                             fontSizeSlider.value = 1
                             autoScrollSwitch.checked = true
                             updateSwitch.checked = false
+                            // 重置主题和字体
+                            DesignSystem.setTheme(0)
+                            DesignSystem.fontScale = 0
+                            themeCombo.currentIndex = 0
                         }
                     }
                 }
@@ -391,7 +424,8 @@ Popup {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            var fontSize = 10 + root.fontSizeIdx
+                            // 字体大小: 索引 0-4 对应 10,12,14,16,18 px
+                            var fontSize = [10, 12, 14, 16, 18][root.fontSizeIdx]
                             appCore.saveSettings(fontSize, root.maxLogLines, root.autoScroll)
                             root.close()
                         }

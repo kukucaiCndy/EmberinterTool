@@ -240,6 +240,131 @@ serial-monitor-cli --get-logs 50 --json > history.json
 
 ---
 
+### 终端管理 (v1.3.0+)
+
+CLI 支持创建和管理终端 Tab（本地 bash/cmd/PowerShell/SSH），AI 可以像人一样在终端里持续工作。**这是 v1.3.0 的核心新功能。**
+
+#### 终端创建命令
+
+| 命令行 (单次) | 交互模式 | 说明 |
+|---------------|----------|------|
+| `--create-terminal [SHELL]` | `term [shell]` | 创建本地终端，返回 tab index |
+| `--create-ssh TARGET` | `ssh user@host [port]` | 创建 SSH 终端 |
+| `--ssh-host HOST` | — | SSH 主机 (配合 --create-ssh) |
+| `--ssh-user USER` | — | SSH 用户名 |
+| `--ssh-port PORT` | — | SSH 端口 (默认 22) |
+
+**支持的 Shell 类型**：
+
+| Shell | 命令 | 说明 |
+|-------|------|------|
+| MSYS2 Bash | `--create-terminal bash` | 自动识别 MSYS2 路径，加载 /mingw64 环境 |
+| CMD | `--create-terminal cmd.exe` | Windows 命令行 |
+| PowerShell | `--create-terminal powershell.exe` | Windows PowerShell |
+| SSH | `--create-ssh user@host` | SSH 远程终端 |
+
+```bash
+# 创建 bash 终端 (返回 tab_index)
+serial-monitor-cli --create-terminal bash
+# → [OK] Terminal tab created: bash (tab_index=0, type=cmd)
+
+# 创建 SSH 终端
+serial-monitor-cli --create-ssh user@192.168.1.100 --ssh-port 22
+# → [OK] SSH tab created: user@192.168.1.100:22 (tab_index=1, type=ssh)
+```
+
+#### Tab 管理命令
+
+| 命令行 (单次) | 交互模式 | 说明 |
+|---------------|----------|------|
+| `--list-tabs` | `tabs` | 列出所有 Tab (串口/终端/SSH) |
+| `--switch-tab INDEX` | `tab INDEX` | 切换活动 Tab |
+| `--close-tab INDEX` | `close INDEX` | 关闭指定 Tab |
+| `--get-status` | `status` | 查看当前状态 (含 tab_index) |
+
+```bash
+# 列出所有 Tab
+serial-monitor-cli --list-tabs
+# →   Idx  Type   Conn   Title
+#   >   0  cmd   ON  [终端] bash
+#       1  ssh   ON  [SSH] user@host
+
+# 切换到 Tab 1
+serial-monitor-cli --switch-tab 1
+
+# 关闭 Tab 0
+serial-monitor-cli --close-tab 0
+```
+
+#### 终端输入与输出订阅
+
+| 命令行 (单次) | 说明 |
+|---------------|------|
+| `--terminal-input TEXT` | 向终端发送文本 (自动追加 \r\n) |
+| `--tab-index INDEX` | 指定目标 Tab (配合 --terminal-input) |
+| `--subscribe-tab INDEX` | 订阅终端输出，进入交互模式 |
+| `--raw-output` | 原始字节输出 (配合 --subscribe-tab) |
+
+```bash
+# 向 Tab 0 发送命令
+serial-monitor-cli --terminal-input "ls -la" --tab-index 0
+# → [OK] Sent 7 bytes to tab 0
+
+# 向 Tab 0 发送编译命令
+serial-monitor-cli --terminal-input "make build" --tab-index 0
+```
+
+#### 终端交互模式 (`--subscribe-tab`)
+
+订阅终端输出后进入交互模式，可直接输入命令发送到终端，特殊命令以 `:` 开头：
+
+```bash
+# 订阅 Tab 0 并进入交互模式
+serial-monitor-cli --subscribe-tab 0 --raw-output
+```
+
+```
+============================================================
+  终端交互模式 - Tab #0
+  已订阅终端输出, 输入命令直接发送到终端
+  特殊命令: :help :quit :tabs :tab N :close N :sub N :unsub :raw
+============================================================
+
+ls -la                    # 直接发送到终端
+:tabs                     # 列出所有 Tab
+:tab 1                    # 切换并订阅 Tab 1
+:close 0                  # 关闭 Tab 0
+:sub 2                    # 订阅 Tab 2 输出
+:unsub                    # 取消订阅
+:raw                      # 切换原始字节输出模式
+:quit                     # 退出
+```
+
+#### AI 持久化操作终端工作流
+
+AI 可以像人一样在一个终端里持续工作（编译、调试、部署）：
+
+```bash
+# 1. 创建终端，记录返回的 tab_index
+serial-monitor-cli --create-terminal bash
+# → [OK] Terminal tab created: bash (tab_index=0, type=cmd)
+
+# 2. 后台订阅，持续接收终端输出 (AI 的"眼睛")
+serial-monitor-cli --subscribe-tab 0 --raw-output &
+
+# 3. 反复发命令，观察输出 (AI 的决策循环)
+serial-monitor-cli --terminal-input "cd /project" --tab-index 0
+serial-monitor-cli --terminal-input "git status" --tab-index 0
+serial-monitor-cli --terminal-input "make build" --tab-index 0
+
+# 4. 完成后清理
+serial-monitor-cli --close-tab 0
+```
+
+> **关键**：`--subscribe-tab` 订阅后，该 CLI 进程会持续接收终端的实时输出。用 `--terminal-input` 从另一个 CLI 进程发送命令。这种"订阅+发送"分离的设计让 AI 可以边观察输出边决策。
+
+---
+
 ### 其他交互命令
 
 | 交互命令 | 别名 | 说明 |
@@ -346,6 +471,52 @@ serial-monitor-cli -p COM3 --cli
 serial-monitor-cli -p COM5 --cli
 ```
 
+### 7. AI 持久化操作终端（v1.3.0+）
+
+AI 可以创建终端并像人一样持续操作，适用于编译、调试、部署等场景：
+
+```bash
+# Step 1: 创建 MSYS2 bash 终端 (自动加载 mingw64 环境)
+serial-monitor-cli --create-terminal bash
+# → [OK] Terminal tab created: bash (tab_index=0, type=cmd)
+
+# Step 2: 后台订阅终端输出，持续接收日志
+serial-monitor-cli --subscribe-tab 0 --raw-output &
+SUBSCRIBE_PID=$!
+
+# Step 3: 发送命令并观察输出 (AI 决策循环)
+serial-monitor-cli --terminal-input "cd /f/work/project" --tab-index 0
+sleep 1
+serial-monitor-cli --terminal-input "git status" --tab-index 0
+sleep 2
+serial-monitor-cli --terminal-input "mingw32-make -j8" --tab-index 0
+sleep 5
+serial-monitor-cli --terminal-input "ls -la build/" --tab-index 0
+
+# Step 4: 完成后关闭 Tab 和订阅
+kill $SUBSCRIBE_PID
+serial-monitor-cli --close-tab 0
+```
+
+### 8. SSH 远程服务器管理（v1.3.0+）
+
+```bash
+# 创建 SSH 终端连接远程服务器
+serial-monitor-cli --create-ssh root@192.168.1.100
+
+# 列出 Tab 确认 (假设 tab_index=0)
+serial-monitor-cli --list-tabs
+
+# 订阅输出 + 发送命令
+serial-monitor-cli --subscribe-tab 0 --raw-output &
+serial-monitor-cli --terminal-input "docker ps" --tab-index 0
+serial-monitor-cli --terminal-input "systemctl status nginx" --tab-index 0
+serial-monitor-cli --terminal-input "tail -f /var/log/syslog" --tab-index 0
+
+# 完成后关闭
+serial-monitor-cli --close-tab 0
+```
+
 ---
 
 ## 日志级别与颜色
@@ -369,3 +540,8 @@ serial-monitor-cli -p COM5 --cli
 - `--cli` 交互模式必须配合 `-p PORT` 使用
 - `--send` / `--send-hex` / `--send-file` 需要 `-p PORT` 指定目标串口
 - HEX 数据支持空格分隔（`FF AB 03`）或无空格（`FFAB03`）
+- **终端管理 (v1.3.0+)**：`--create-terminal bash` 会自动识别 MSYS2 路径，加载 /mingw64 环境
+- `--terminal-input` 自动追加 `\r\n`，命令会立即执行
+- `--subscribe-tab` 订阅后持续运行，需用 `:quit` 或 Ctrl+C 退出
+- `--raw-output` 模式输出原始字节（含 ANSI 控制序列），适合交互式终端体验
+- AI 持久化操作终端的标准流程：创建 → 订阅 → 发送命令 → 观察输出 → 关闭
