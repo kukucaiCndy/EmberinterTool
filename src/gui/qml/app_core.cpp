@@ -55,6 +55,7 @@ void AppCore::init(QQmlApplicationEngine* engine)
 
     // 加载已保存会话
     savedPortModel_.load();
+    refreshSavedPortConnected();
 
     // 初始串口扫描
     refreshSerialPorts();
@@ -81,6 +82,20 @@ void AppCore::refreshSerialPorts()
         availablePorts_ = ports;
         emit availableSerialPortsChanged();
     }
+}
+
+void AppCore::refreshSavedPortConnected()
+{
+    const auto& savedPorts = ConfigManager::instance().config().savedPorts;
+    QVector<bool> conn(savedPorts.size(), false);
+    for (int i = 0; i < savedPorts.size(); ++i) {
+        int tabIdx = findTabForSavedPort(i);
+        if (tabIdx >= 0) {
+            TabPage* page = tabModel_.tabAt(tabIdx);
+            conn[i] = page && page->isConnected();
+        }
+    }
+    savedPortModel_.refreshConnected(conn);
 }
 
 // ── Tab 管理 ─────────────────────────────────────────────
@@ -262,6 +277,7 @@ void AppCore::confirmConnection(const QJsonObject& params)
     emit statusTextChanged();
     emit portConfigTextChanged();
     emit uptimeTextChanged();
+    refreshSavedPortConnected();
     spdlog::info("Connection created: type={}, name={}", connType.toStdString(), name.toStdString());
 }
 
@@ -304,6 +320,11 @@ void AppCore::connectSavedPort(int index)
         if (match) {
             spdlog::info("Tab already exists, switching to index={}", i);
             setCurrentTab(i);
+            // 如果 Tab 已断开，重新连接
+            if (!existing->isConnected()) {
+                existing->connectTo(it.value());
+                spdlog::info("Reconnecting tab index={}", i);
+            }
             return;
         }
     }
@@ -405,6 +426,10 @@ void AppCore::removeSavedPort(int index)
 
     spdlog::debug("AppCore::removeSavedPort: index={}, name={}",
                   index, config.savedPorts[index].name.toStdString());
+
+    // 先关闭对应的 Tab
+    closeTabForSavedPort(index);
+
     config.savedPorts.removeAt(index);
     ConfigManager::instance().save();
     savedPortModel_.load();
@@ -828,9 +853,8 @@ void AppCore::onTabStatusChanged(bool connected)
     }
 
     updateStatus();
+    refreshSavedPortConnected();
 }
-
-// ── IPC 命令处理 ──────────────────────────────────────────
 
 void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
                            const QJsonObject& params, const QString& reqId)

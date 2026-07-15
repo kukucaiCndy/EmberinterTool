@@ -30,7 +30,10 @@ QVariant LogListModel::data(const QModelIndex& index, int role) const
 
     const auto& e = entries_[index.row()];
     switch (role) {
-    case DisplayRole:   return LogParser::formatDisplay(e, true);
+    case DisplayRole:
+        if (hexMode_)
+            return LogParser::formatHex(e.rawBytes);
+        return LogParser::formatDisplay(e, showTimestamp_);
     case TimestampRole: return e.timestamp;
     case LevelRole:     return e.level;
     case ColorRole:     return LogParser::levelColorHex(e.level);
@@ -87,6 +90,13 @@ void LogListModel::clear()
     endResetModel();
 }
 
+QString LogListModel::getText(int row) const
+{
+    if (row < 0 || row >= entries_.size())
+        return {};
+    return LogParser::formatDisplay(entries_[row], true);
+}
+
 void LogListModel::setMaxEntries(int n)
 {
     maxEntries_ = qMax(100, n);
@@ -135,6 +145,7 @@ QString SerialTabPage::tabTitle() const
 void SerialTabPage::connectTo(const QJsonObject& params)
 {
     portName_ = params["port"].toString();
+    lastConnParams_ = params;
     emit portNameChanged();
     emit tabTitleChanged();
 
@@ -185,12 +196,30 @@ void SerialTabPage::exportContent(const QString& path)
     for (const auto& entry : logBuffer_.getAll()) {
         stream << LogParser::formatDisplay(entry, showTimestamp_) << "\n";
     }
+    file.close();
 
     spdlog::info("SerialTabPage: exported {} entries to {}",
                  logBuffer_.size(), path.toStdString());
 }
 
 // ── QML 可调用 ──────────────────────────────────────────
+
+void SerialTabPage::reconnect()
+{
+    if (connected_) return;
+    if (lastConnParams_.isEmpty()) return;
+
+    SerialConfig cfg;
+    cfg.port       = lastConnParams_["port"].toString();
+    cfg.baudrate   = lastConnParams_["baud"].toInt(115200);
+    cfg.databits   = static_cast<QSerialPort::DataBits>(lastConnParams_["data_bits"].toInt(8));
+    cfg.parity     = static_cast<QSerialPort::Parity>(lastConnParams_["parity"].toInt(0));
+    cfg.stopbits   = static_cast<QSerialPort::StopBits>(lastConnParams_["stop_bits"].toInt(1));
+
+    connectionTimer_.restart();
+    engine_.open(cfg);
+    spdlog::info("SerialTabPage: reconnecting to {}", portName_.toStdString());
+}
 
 void SerialTabPage::sendText(const QString& text, const QString& append)
 {
@@ -253,8 +282,11 @@ void SerialTabPage::setFilter(const QString& keyword)
 void SerialTabPage::setHexMode(bool enabled)
 {
     hexMode_ = enabled;
+    logModel_.setHexMode(enabled);
     emit hexModeChanged();
-    rebuildModel();
+    // 触发 dataChanged 让 ListView 重新请求 DisplayRole
+    if (logModel_.rowCount() > 0)
+        emit logModel_.dataChanged(logModel_.index(0), logModel_.index(logModel_.rowCount() - 1), {LogListModel::DisplayRole});
 }
 
 void SerialTabPage::setPaused(bool p)
@@ -276,8 +308,10 @@ void SerialTabPage::setPaused(bool p)
 void SerialTabPage::setShowTimestamp(bool show)
 {
     showTimestamp_ = show;
+    logModel_.setShowTimestamp(show);
     emit showTimestampChanged();
-    rebuildModel();
+    if (logModel_.rowCount() > 0)
+        emit logModel_.dataChanged(logModel_.index(0), logModel_.index(logModel_.rowCount() - 1), {LogListModel::DisplayRole});
 }
 
 void SerialTabPage::setAutoScroll(bool enabled)
@@ -291,9 +325,21 @@ void SerialTabPage::clearLogs()
     clearContent();
 }
 
-void SerialTabPage::exportLogs(const QString& path)
+bool SerialTabPage::exportLogs(const QString& path)
 {
-    exportContent(path);
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        spdlog::error("SerialTabPage: failed to export to {}", path.toStdString());
+        return false;
+    }
+    QTextStream stream(&file);
+    for (const auto& entry : logBuffer_.getAll()) {
+        stream << LogParser::formatDisplay(entry, showTimestamp_) << "\n";
+    }
+    file.close();
+    spdlog::info("SerialTabPage: exported {} entries to {}",
+                 logBuffer_.size(), path.toStdString());
+    return true;
 }
 
 void SerialTabPage::setPortName(const QString& name)

@@ -39,6 +39,10 @@ case "$cmd" in
     rebuild)
         "$0" clean
         "$0" all
+        # 确保开发模式不残留 macdeployqt 部署的 Qt 库
+        rm -rf "$BUILD_DIR/bin/serial-monitor.app/Contents/Frameworks" \
+               "$BUILD_DIR/bin/serial-monitor.app/Contents/PlugIns" \
+               "$BUILD_DIR/bin/serial-monitor.app/Contents/Resources/qt.conf"
         ;;
 
     deploy)
@@ -47,6 +51,13 @@ case "$cmd" in
             echo "错误: $APP 不存在，请先运行 ./make_macos.sh all"
             exit 1
         fi
+
+        # 清理旧部署产物，避免两套 Qt 库冲突
+        echo "==> 清理旧部署产物..."
+        rm -rf "$APP/Contents/Frameworks" \
+               "$APP/Contents/PlugIns" \
+               "$APP/Contents/Resources/qt.conf"
+
         echo "==> 使用 macdeployqt 打包..."
         macdeployqt "$APP" \
             -qmldir="$PROJECT_DIR/src/gui/qml" \
@@ -110,12 +121,12 @@ case "$cmd" in
         echo "用法: $0 {all|clean|rebuild|deploy|dmg|release}"
         echo ""
         echo "命令说明:"
-        echo "  all      - Debug 模式编译"
+        echo "  all      - Debug 编译 (用 Homebrew Qt 运行，无需打包)"
         echo "  clean    - 清理构建产物"
-        echo "  rebuild  - 清理后重新编译"
-        echo "  deploy   - 使用 macdeployqt 打包 .app"
+        echo "  rebuild  - 清理后重新编译 (自动清理旧 Frameworks)"
+        echo "  deploy   - macdeployqt 打包 Qt 库到 .app (分发前用)"
         echo "  dmg      - 生成 DMG 安装包 (需先 deploy)"
-        echo "  release  - 一键 Release 构建+打包+DMG"
+        echo "  release  - 一键 Release: clean + build + deploy + dmg"
         exit 1
         ;;
 esac

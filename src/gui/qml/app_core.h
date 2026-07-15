@@ -88,7 +88,7 @@ private:
 class SavedPortModel : public QAbstractListModel {
     Q_OBJECT
 public:
-    enum Roles { SummaryRole = Qt::UserRole + 1, TypeRole, AvailableRole };
+    enum Roles { SummaryRole = Qt::UserRole + 1, TypeRole, AvailableRole, NameRole, ConnectedRole };
 
     explicit SavedPortModel(QObject* parent = nullptr) : QAbstractListModel(parent) {}
 
@@ -105,24 +105,42 @@ public:
         case SummaryRole:  return p.summary();
         case TypeRole:     return static_cast<int>(p.type);
         case AvailableRole: return isAvailable(p);
+        case NameRole:     return p.name;
+        case ConnectedRole: return connected_[index.row()];
         }
         return {};
     }
 
     QHash<int, QByteArray> roleNames() const override {
-        return {{SummaryRole, "summary"}, {TypeRole, "type"}, {AvailableRole, "available"}};
+        return {{SummaryRole, "summary"}, {TypeRole, "type"}, {AvailableRole, "available"},
+                {NameRole, "name"}, {ConnectedRole, "connected"}};
     }
 
     void load() {
         beginResetModel();
         ports_ = ConfigManager::instance().config().savedPorts;
+        connected_.fill(false, ports_.size());
         endResetModel();
+    }
+
+    void setConnected(int row, bool connected) {
+        if (row >= 0 && row < connected_.size()) {
+            connected_[row] = connected;
+            emit dataChanged(index(row), index(row), {ConnectedRole});
+        }
+    }
+
+    void refreshConnected(const QVector<bool>& conn) {
+        connected_ = conn;
+        if (!connected_.isEmpty())
+            emit dataChanged(index(0), index(connected_.size() - 1), {ConnectedRole});
     }
 
     int count() const { return ports_.size(); }
 
 private:
     QVector<SavedPort> ports_;
+    QVector<bool> connected_;
 
     bool isAvailable(const SavedPort& p) const {
         if (p.type != TabType::Serial) return true;
@@ -233,6 +251,7 @@ private:
     void removeTab(TabPage* page);
     void updateStatus();
     void refreshSerialPorts();
+    void refreshSavedPortConnected();
     bool isPortUsed(const QString& port) const;
     QString formatUptime(qint64 seconds) const;
 

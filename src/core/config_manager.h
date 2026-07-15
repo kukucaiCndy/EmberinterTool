@@ -34,7 +34,8 @@ struct SavedPort {
             return QString("[SSH] %1").arg(name.isEmpty() ? label : name);
         }
         default:
-            return port.isEmpty() ? name : QString("%1 - %2").arg(port, name);
+            if (!name.isEmpty()) return name;
+            return port.isEmpty() ? QString() : port;
         }
     }
 

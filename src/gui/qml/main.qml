@@ -255,6 +255,7 @@ ApplicationWindow {
                             Rectangle {
                                 width: 8; height: 8; radius: 4
                                 color: {
+                                    if (model.connected) return DesignSystem.success
                                     if (!model.available) return DesignSystem.textSecondary
                                     switch(model.type) {
                                         case 0: return DesignSystem.accent   // 串口
@@ -304,9 +305,8 @@ ApplicationWindow {
                                         sessionContextMenu.connected = page ? page.connected : false
                                     }
                                     sessionContextMenu.popup()
-                                } else {
-                                    appCore.connectSavedPort(index)
                                 }
+                                // 左键单击不自动连接，仅双击连接
                             }
                             onDoubleClicked: appCore.connectSavedPort(index)
                         }
@@ -337,7 +337,7 @@ ApplicationWindow {
                                 onTriggered: {
                                     renameDialog.savedPortIndex = sessionContextMenu.sessionIndex
                                     renameDialog.isSavedPort = true
-                                    renameDialog.currentName = sessionContextMenu.sessionSummary
+                                    renameDialog.currentName = model.name
                                     renameDialog.open()
                                 }
                             }

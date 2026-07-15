@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
+import QtCore
 import EmberDesign 1.0
 
 /// 串口 Tab — 日志查看 + 数据发送面板
@@ -11,6 +13,24 @@ Rectangle {
     color: DesignSystem.bgPrimary
 
     property var tabPage: null
+    property bool selecting: false
+    property int selStartIdx: -1
+    property int selEndIdx: -1
+
+    // 断开状态下，回车键重新连接
+    focus: true
+    Keys.onReturnPressed: {
+        if (root.tabPage && !root.tabPage.connected) {
+            root.tabPage.reconnect()
+        }
+    }
+
+    // 隐藏的 TextArea 用于复制选中文本到剪贴板
+    TextArea {
+        id: clipboardHelper
+        visible: false
+        width: 0; height: 0
+    }
 
     onTabPageChanged: {
         console.log("[SerialTab] onTabPageChanged: tabPage=", tabPage)
@@ -72,7 +92,10 @@ Rectangle {
                 ToggleBtn {
                     text: "HEX"
                     checked: root.tabPage && root.tabPage.hexMode
-                    onClicked: { if (root.tabPage) root.tabPage.setHexMode(!root.tabPage.hexMode) }
+                    onClicked: {
+                        console.log("[SerialTab] HEX clicked, tabPage=", root.tabPage, "hexMode=", root.tabPage ? root.tabPage.hexMode : "N/A")
+                        if (root.tabPage) root.tabPage.setHexMode(!root.tabPage.hexMode)
+                    }
                     tooltip: "十六进制模式"
                 }
 
@@ -80,7 +103,10 @@ Rectangle {
                 ToggleBtn {
                     text: "TS"
                     checked: root.tabPage ? root.tabPage.showTimestamp : true
-                    onClicked: { if (root.tabPage) root.tabPage.setShowTimestamp(!root.tabPage.showTimestamp) }
+                    onClicked: {
+                        console.log("[SerialTab] TS clicked, tabPage=", root.tabPage, "showTimestamp=", root.tabPage ? root.tabPage.showTimestamp : "N/A")
+                        if (root.tabPage) root.tabPage.setShowTimestamp(!root.tabPage.showTimestamp)
+                    }
                     tooltip: "显示时间戳"
                 }
 
@@ -88,7 +114,10 @@ Rectangle {
                 ToggleBtn {
                     text: root.tabPage && root.tabPage.paused ? DesignSystem.iconPlay : DesignSystem.iconPause
                     checked: root.tabPage && root.tabPage.paused
-                    onClicked: { if (root.tabPage) root.tabPage.setPaused(!root.tabPage.paused) }
+                    onClicked: {
+                        console.log("[SerialTab] Pause clicked, tabPage=", root.tabPage)
+                        if (root.tabPage) root.tabPage.setPaused(!root.tabPage.paused)
+                    }
                     tooltip: root.tabPage && root.tabPage.paused ? "继续" : "暂停"
                     warnColor: true
                 }
@@ -98,7 +127,10 @@ Rectangle {
                 // 清空
                 ToolBtn {
                     text: DesignSystem.iconClose; tooltip: "清空日志 (不可撤销)"
-                    onClicked: { if (root.tabPage) root.tabPage.clearLogs() }
+                    onClicked: {
+                        console.log("[SerialTab] Clear clicked, tabPage=", root.tabPage)
+                        if (root.tabPage) root.tabPage.clearLogs()
+                    }
                     dangerColor: true
                 }
 
@@ -107,8 +139,7 @@ Rectangle {
                     text: DesignSystem.iconExport; tooltip: "导出日志 JSON"
                     onClicked: {
                         if (root.tabPage) {
-                            var filename = "export_" + Qt.formatDateTime(new Date(), "yyyyMMdd_hhmmss") + ".json"
-                            root.tabPage.exportLogs(filename)
+                            exportDialog.open()
                         }
                     }
                 }
@@ -159,11 +190,11 @@ Rectangle {
             cacheBuffer: 4000
             pixelAligned: true
 
-            // 自动滚动
+            // 自动滚动: 仅在非选择状态且 autoScroll 时滚动到底部
             Connections {
                 target: logList.model
                 function onRowsInserted() {
-                    if (root.tabPage && root.tabPage.autoScroll)
+                    if (root.tabPage && root.tabPage.autoScroll && !root.selecting)
                         logList.positionViewAtEnd()
                 }
             }
@@ -172,11 +203,14 @@ Rectangle {
                 width: logList.width
                 height: DesignSystem.logLineHeight
 
+                // 选中高亮背景
                 Rectangle {
                     anchors.fill: parent
                     color: {
-                        var idx = index % 2
-                        return idx === 0 ? "transparent" : "#FFFFFF04"
+                        if (root.selStartIdx < 0) return "transparent"
+                        var s = Math.min(root.selStartIdx, root.selEndIdx)
+                        var e = Math.max(root.selStartIdx, root.selEndIdx)
+                        return (index >= s && index <= e) ? DesignSystem.accent15 : "transparent"
                     }
                 }
 
@@ -192,6 +226,62 @@ Rectangle {
                 }
             }
 
+            // 鼠标选择处理 (覆盖在 ListView 上，阻止 Flickable 拦截拖动)
+            MouseArea {
+                id: selectionArea
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+                cursorShape: Qt.IBeamCursor
+                preventStealing: true
+                propagateComposedEvents: false
+
+                onPressed: function(mouse) {
+                    var y = mouse.y + logList.contentY
+                    var idx = logList.indexAt(mouse.x, y)
+                    // indexAt 可能返回 -1，用手动计算兜底
+                    if (idx < 0 && logList.count > 0) {
+                        idx = Math.floor(y / DesignSystem.logLineHeight)
+                        idx = Math.max(0, Math.min(idx, logList.count - 1))
+                    }
+                    if (idx >= 0) {
+                        root.selecting = true
+                        root.selStartIdx = idx
+                        root.selEndIdx = idx
+                    }
+                }
+                onPositionChanged: function(mouse) {
+                    if (!root.selecting) return
+                    var y = mouse.y + logList.contentY
+                    var idx = logList.indexAt(mouse.x, y)
+                    if (idx < 0 && logList.count > 0) {
+                        idx = Math.floor(y / DesignSystem.logLineHeight)
+                        idx = Math.max(0, Math.min(idx, logList.count - 1))
+                    }
+                    if (idx >= 0) root.selEndIdx = idx
+                }
+                onReleased: {
+                    if (root.selecting) {
+                        var s = Math.min(root.selStartIdx, root.selEndIdx)
+                        var e = Math.max(root.selStartIdx, root.selEndIdx)
+                        var lines = []
+                        for (var i = s; i <= e; i++) {
+                            var text = logList.model.getText(i)
+                            if (text) lines.push(text)
+                        }
+                        if (lines.length > 0) {
+                            clipboardHelper.text = lines.join("\n")
+                            clipboardHelper.selectAll()
+                            clipboardHelper.copy()
+                        }
+                        root.selecting = false
+                    }
+                }
+                onWheel: function(wheel) {
+                    // 滚轮事件转发给 ListView
+                    wheel.accepted = false
+                }
+            }
+
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AlwaysOn
                 contentItem: Rectangle {
@@ -202,7 +292,8 @@ Rectangle {
 
             // 空状态
             Rectangle {
-                anchors.fill: parent; color: DesignSystem.bgPrimary; z: -1
+                anchors.fill: parent; color: DesignSystem.bgPrimary
+                visible: logList.count === 0
                 ColumnLayout {
                     anchors.centerIn: parent; spacing: DesignSystem.spaceSm
                     Text {
@@ -240,6 +331,30 @@ Rectangle {
                 anchors.fill: parent; anchors.margins: DesignSystem.spaceSm
                 spacing: DesignSystem.spaceSm
 
+                // 换行符选择 (固定宽度，左侧)
+                ComboBox {
+                    id: appendCombo
+                    Layout.preferredWidth: 70; Layout.preferredHeight: 32
+                    model: ["CRLF", "LF", "CR", "\u2205"]
+                    currentIndex: 0
+
+                    background: Rectangle {
+                        color: DesignSystem.bgTertiary; radius: DesignSystem.radiusSm
+                        border.width: 1; border.color: DesignSystem.border
+                    }
+                    contentItem: Text {
+                        leftPadding: 6; text: appendCombo.displayText
+                        color: DesignSystem.textPrimary
+                        font.family: DesignSystem.fontMono; font.pixelSize: DesignSystem.fontSizeSm
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    indicator: Text {
+                        x: appendCombo.width - 14
+                        y: (appendCombo.height - 10) / 2
+                        text: "\u25BE"; color: DesignSystem.textSecondary; font.pixelSize: 10
+                    }
+                }
+
                 // 多行输入框
                 Rectangle {
                     Layout.fillWidth: true; Layout.fillHeight: true
@@ -272,60 +387,92 @@ Rectangle {
                     }
                 }
 
-                // 操作列
-                ColumnLayout {
-                    Layout.preferredWidth: 80; spacing: 4
-                    Layout.alignment: Qt.AlignVCenter
-
-                    // 发送按钮
-                    Rectangle {
-                        Layout.fillWidth: true; Layout.preferredHeight: 30
-                        radius: DesignSystem.radiusMd
-                        color: {
-                            if (!(root.tabPage && root.tabPage.connected))
-                                return DesignSystem.bgTertiary
-                            return sendBtnHover.containsMouse ? DesignSystem.accentHover : DesignSystem.accent
-                        }
-                        Behavior on color { ColorAnimation { duration: DesignSystem.animNormal } }
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "发送"; color: DesignSystem.textInverse
-                            font.family: DesignSystem.fontBody; font.pixelSize: DesignSystem.fontSizeMd; font.bold: true
-                        }
-                        MouseArea {
-                            id: sendBtnHover; anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: sendData()
-                        }
+                // 发送按钮 (固定宽度，右侧)
+                Rectangle {
+                    Layout.preferredWidth: 64; Layout.preferredHeight: 32
+                    radius: DesignSystem.radiusMd
+                    color: {
+                        if (!(root.tabPage && root.tabPage.connected))
+                            return DesignSystem.bgTertiary
+                        return sendBtnHover.containsMouse ? DesignSystem.accentHover : DesignSystem.accent
                     }
+                    Behavior on color { ColorAnimation { duration: DesignSystem.animNormal } }
 
-                    // 换行符选择
-                    ComboBox {
-                        id: appendCombo
-                        Layout.fillWidth: true; Layout.preferredHeight: 26
-                        model: ["CRLF", "LF", "CR", "\u2205"]
-                        currentIndex: 0
-
-                        background: Rectangle {
-                            color: DesignSystem.bgTertiary; radius: DesignSystem.radiusSm
-                            border.width: 1; border.color: DesignSystem.border
-                        }
-                        contentItem: Text {
-                            leftPadding: 6; text: appendCombo.displayText
-                            color: DesignSystem.textPrimary
-                            font.family: DesignSystem.fontMono; font.pixelSize: DesignSystem.fontSizeSm
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        indicator: Text {
-                            x: appendCombo.width - 14
-                            y: (appendCombo.height - 10) / 2
-                            text: "\u25BE"; color: DesignSystem.textSecondary; font.pixelSize: 10
-                        }
+                    Text {
+                        anchors.centerIn: parent
+                        text: "发送"; color: DesignSystem.textInverse
+                        font.family: DesignSystem.fontBody; font.pixelSize: DesignSystem.fontSizeMd; font.bold: true
+                    }
+                    MouseArea {
+                        id: sendBtnHover; anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: sendData()
                     }
                 }
             }
+        }
+    }
+
+    // ═══════════════════════════════════════════════
+    // 导出文件对话框
+    // ═══════════════════════════════════════════════
+    FileDialog {
+        id: exportDialog
+        title: "导出日志"
+        defaultSuffix: "json"
+        fileMode: FileDialog.SaveFile
+        currentFolder: StandardPaths.writableLocation(StandardPaths.DesktopLocation)
+        onAccepted: {
+            var path = currentFile.toString().replace("file://", "")
+            var ok = root.tabPage.exportLogs(path)
+            if (ok) {
+                toastMsg.text = "已导出: " + path
+                toastMsg.color = DesignSystem.success
+            } else {
+                toastMsg.text = "导出失败: " + path
+                toastMsg.color = DesignSystem.error
+            }
+            toastMsg.show()
+        }
+    }
+
+    // 导出成功提示
+    Rectangle {
+        id: toastMsg
+        property string text: ""
+        property bool visible_: false
+        function show() {
+            visible_ = true
+            toastTimer.restart()
+        }
+        anchors.bottom: parent.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottomMargin: 90
+        width: toastText.implicitWidth + 32
+        height: 36
+        radius: DesignSystem.radiusMd
+        color: DesignSystem.success
+        opacity: visible_ ? 1.0 : 0.0
+        visible: visible_
+        z: 100
+
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+
+        Text {
+            id: toastText
+            anchors.centerIn: parent
+            text: toastMsg.text
+            color: DesignSystem.textInverse
+            font.family: DesignSystem.fontBody; font.pixelSize: DesignSystem.fontSizeMd
+            elide: Text.ElideRight
+            maximumLineCount: 1
+        }
+
+        Timer {
+            id: toastTimer
+            interval: 3000
+            onTriggered: toastMsg.visible_ = false
         }
     }
 
@@ -367,7 +514,11 @@ Rectangle {
         }
         MouseArea {
             id: btnHover; anchors.fill: parent; hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked()
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                console.log("[ToggleBtn] mouse clicked, text=", text)
+                parent.clicked()
+            }
         }
         ToolTip {
             visible: btnHover.containsMouse && tooltip
@@ -395,7 +546,11 @@ Rectangle {
         }
         MouseArea {
             id: btnHover; anchors.fill: parent; hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked()
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                console.log("[ToolBtn] mouse clicked, text=", text)
+                parent.clicked()
+            }
         }
         ToolTip {
             visible: btnHover.containsMouse && tooltip

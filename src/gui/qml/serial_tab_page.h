@@ -32,12 +32,19 @@ public:
     void rebuild(const QVector<LogEntry>& entries);
     void clear();
 
+    Q_INVOKABLE QString getText(int row) const;
+
+    void setHexMode(bool enabled) { hexMode_ = enabled; }
+    void setShowTimestamp(bool show) { showTimestamp_ = show; }
+
     int maxEntries() const { return maxEntries_; }
     void setMaxEntries(int n);
 
 private:
     QVector<LogEntry> entries_;
     int maxEntries_;
+    bool hexMode_ = false;
+    bool showTimestamp_ = true;
 };
 
 // ── 串口 Tab 页 (纯逻辑, 无 QWidget) ────────────────────
@@ -79,6 +86,7 @@ public:
     QString portName() const { return portName_; }
 
     // QML 可调用方法
+    Q_INVOKABLE void reconnect();
     Q_INVOKABLE void sendText(const QString& text, const QString& append);
     Q_INVOKABLE void sendHex(const QString& hex);
     Q_INVOKABLE void sendRaw(const QByteArray& data);
@@ -88,7 +96,7 @@ public:
     Q_INVOKABLE void setShowTimestamp(bool show);
     Q_INVOKABLE void setAutoScroll(bool enabled);
     Q_INVOKABLE void clearLogs();
-    Q_INVOKABLE void exportLogs(const QString& path);
+    Q_INVOKABLE bool exportLogs(const QString& path);
 
     // 内部接口
     void setPortName(const QString& name);
@@ -130,6 +138,7 @@ private:
     qint64 rxBytes_;
     qint64 txBytes_;
     QByteArray remainder_;
+    QJsonObject lastConnParams_;  // 保存最后一次连接参数，用于重连
 
     // 批量处理: 待刷新的条目
     mutable QMutex pendingMutex_;

@@ -45,7 +45,7 @@ QString LogParser::detectLevel(const QString& line)
     // ERROR (优先级最高)
     if (startsWithLevel("ERROR") || startsWithLevel("ERR") ||
         containsBracketLevel("ERROR") || containsBracketLevel("ERR") ||
-        upper.contains("FAIL")) {
+        upper.contains("FAIL:") || upper.contains("[FAIL]")) {
         return "ERROR";
     }
     // WARN (支持 WARNG 变体)
