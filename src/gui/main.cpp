@@ -98,7 +98,7 @@ int main(int argc, char* argv[])
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("EmberInterDebugTool");
-    app.setApplicationVersion("1.3.1");
+    app.setApplicationVersion("1.4.0");
     app.setOrganizationName("EmberInter");
     app.setWindowIcon(QIcon(":/icons/app.ico"));
 
