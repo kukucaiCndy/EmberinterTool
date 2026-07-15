@@ -10,7 +10,18 @@
 #include <QDateTime>
 #include <QGuiApplication>
 #include <QWindow>
+#include <QProcessEnvironment>
 #include <spdlog/spdlog.h>
+
+// 平台默认 shell
+static QString defaultShell()
+{
+#ifdef Q_OS_WIN
+    return QStringLiteral("cmd.exe");
+#else
+    return QProcessEnvironment::systemEnvironment().value("SHELL", "/bin/bash");
+#endif
+}
 
 AppCore::AppCore(QObject* parent)
     : QObject(parent)
@@ -281,7 +292,7 @@ void AppCore::connectSavedPort(int index)
             match = (cp["port"].toString() == sp.port);
             break;
         case TabType::CMD:
-            match = (cp["shell"].toString() == sp.extra["shell"].toString("cmd.exe"));
+            match = (cp["shell"].toString() == sp.extra["shell"].toString(defaultShell()));
             break;
         case TabType::SSH:
             match = (cp["host"].toString() == sp.extra["host"].toString() &&
@@ -343,7 +354,7 @@ void AppCore::connectSavedPort(int index)
         break;
     }
     case TabType::CMD: {
-        QString shell = sp.extra["shell"].toString("cmd.exe");
+        QString shell = sp.extra["shell"].toString(defaultShell());
         auto* page = new TerminalTabPage(TabType::CMD, this);
         addTab(page);
 
@@ -908,7 +919,7 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
         QJsonObject connParams;
 
         if (type == "cmd" || type == "terminal") {
-            QString shell = params.value("shell").toString("cmd.exe");
+            QString shell = params.value("shell").toString(defaultShell());
             connParams["shell"] = shell;
             auto* tp = new TerminalTabPage(TabType::CMD, this);
             addTab(tp);
@@ -1202,7 +1213,7 @@ int AppCore::findSavedPortForTab(int index) const
             match = (cp["port"].toString() == sp.port);
             break;
         case TabType::CMD:
-            match = (cp["shell"].toString() == sp.extra["shell"].toString("cmd.exe"));
+            match = (cp["shell"].toString() == sp.extra["shell"].toString(defaultShell()));
             break;
         case TabType::SSH:
             match = (cp["host"].toString() == sp.extra["host"].toString() &&
@@ -1246,7 +1257,7 @@ int AppCore::findTabForSavedPort(int savedIndex) const
             match = (cp["port"].toString() == sp.port);
             break;
         case TabType::CMD:
-            match = (cp["shell"].toString() == sp.extra["shell"].toString("cmd.exe"));
+            match = (cp["shell"].toString() == sp.extra["shell"].toString(defaultShell()));
             break;
         case TabType::SSH:
             match = (cp["host"].toString() == sp.extra["host"].toString() &&

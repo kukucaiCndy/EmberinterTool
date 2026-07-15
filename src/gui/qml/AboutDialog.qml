@@ -238,7 +238,9 @@ Popup {
                         }
                         Text {
                             Layout.alignment: Qt.AlignHCenter
-                            text: "Qt 6.x | MSYS2 mingw64 | C++17"
+                            text: Qt.platform.os === "windows"
+                                  ? "Qt 6.x | MSYS2 mingw64 | C++17"
+                                  : "Qt 6.x | macOS Clang | C++17"
                             color: DesignSystem.textSecondary
                             font.family: DesignSystem.fontBody
                             font.pixelSize: DesignSystem.fontSizeSm

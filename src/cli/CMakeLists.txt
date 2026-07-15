@@ -26,6 +26,8 @@ target_link_libraries(serial-monitor-cli PRIVATE
     Qt6::Network
 )
 
-set_target_properties(serial-monitor-cli PROPERTIES
-    WIN32_EXECUTABLE FALSE
-)
+if(WIN32)
+    set_target_properties(serial-monitor-cli PROPERTIES
+        WIN32_EXECUTABLE FALSE
+    )
+endif()

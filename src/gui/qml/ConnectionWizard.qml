@@ -24,7 +24,7 @@ Popup {
     property int    wizardDataBits: 8
     property int    wizardParity: 0
     property int    wizardStopBits: 1
-    property string wizardShell: "cmd.exe"
+    property string wizardShell: Qt.platform.os === "windows" ? "cmd.exe" : ""
     property string wizardSshHost: ""
     property string wizardSshPort: "22"
     property string wizardSshUser: ""
@@ -33,7 +33,7 @@ Popup {
     function resetWizard() {
         currentPage = 0; wizardName = ""; wizardSerialPort = ""
         wizardBaud = "115200"; wizardDataBits = 8; wizardParity = 0; wizardStopBits = 1
-        wizardShell = "cmd.exe"; wizardSshHost = ""; wizardSshPort = "22"
+        wizardShell = Qt.platform.os === "windows" ? "cmd.exe" : ""; wizardSshHost = ""; wizardSshPort = "22"
         wizardSshUser = ""; wizardSshPassword = ""
     }
 
@@ -279,7 +279,9 @@ Popup {
                     ComboBox {
                         Layout.fillWidth: true; Layout.preferredHeight: 32
                         currentIndex: 0
-                        model: ["cmd.exe", "PowerShell", "bash (Git/MSYS2)"]
+                        model: Qt.platform.os === "windows"
+                               ? ["cmd.exe", "PowerShell", "bash (Git/MSYS2)"]
+                               : ["zsh (默认)", "bash", "sh"]
                         background: Rectangle {
                             color: DesignSystem.bgTertiary; radius: DesignSystem.radiusSm
                             border.width: 1; border.color: DesignSystem.border
@@ -292,7 +294,11 @@ Popup {
                             verticalAlignment: Text.AlignVCenter
                         }
                         onCurrentIndexChanged: {
-                            root.wizardShell = ["cmd.exe","powershell.exe","bash.exe"][currentIndex]
+                            if (Qt.platform.os === "windows") {
+                                root.wizardShell = ["cmd.exe","powershell.exe","bash.exe"][currentIndex]
+                            } else {
+                                root.wizardShell = ["", "/bin/bash", "/bin/sh"][currentIndex]
+                            }
                         }
                     }
                 }

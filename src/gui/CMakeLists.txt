@@ -47,6 +47,22 @@ target_link_libraries(serial-monitor PRIVATE
     Qt6::OpenGL
 )
 
-set_target_properties(serial-monitor PROPERTIES
-    WIN32_EXECUTABLE TRUE
-)
+if(APPLE)
+    # macOS: 构建 .app Bundle
+    set_target_properties(serial-monitor PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/resources/macos/Info.plist.in"
+    )
+    # 安装应用图标
+    set_source_files_properties(
+        ${CMAKE_SOURCE_DIR}/resources/icons/logo.png
+        PROPERTIES MACOSX_PACKAGE_LOCATION "Resources"
+    )
+    target_sources(serial-monitor PRIVATE
+        ${CMAKE_SOURCE_DIR}/resources/icons/logo.png
+    )
+elseif(WIN32)
+    set_target_properties(serial-monitor PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
+endif()

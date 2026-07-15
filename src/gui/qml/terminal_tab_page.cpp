@@ -103,9 +103,20 @@ void TerminalTabPage::doConnect(const QJsonObject& params)
     spdlog::debug("TerminalTabPage::doConnect: type={}, this={}", static_cast<int>(type_), (void*)this);
     switch (type_) {
     case TabType::CMD: {
-        QString shell = params["shell"].toString("cmd.exe");
+        QString shell = params["shell"].toString();
+
+        // 平台默认 shell
+        if (shell.isEmpty()) {
+#ifdef Q_OS_WIN
+            shell = "cmd.exe";
+#else
+            // macOS/Linux: 使用用户登录 shell
+            shell = QProcessEnvironment::systemEnvironment().value("SHELL", "/bin/bash");
+#endif
+        }
 
         QStringList args;
+#ifdef Q_OS_WIN
         bool isMsysBash = false;
         if (shell == "powershell.exe" || shell == "pwsh.exe") {
             args << "-NoLogo" << "-NoExit";
@@ -144,6 +155,12 @@ void TerminalTabPage::doConnect(const QJsonObject& params)
                 }
             }
         }
+#else
+        // macOS/Linux: shell 交互模式
+        if (shell.endsWith("bash") || shell.endsWith("zsh") || shell.endsWith("sh")) {
+            args << "--login" << "-i";
+        }
+#endif
 
         shellName_ = shell;
         emit shellNameChanged();
@@ -152,6 +169,7 @@ void TerminalTabPage::doConnect(const QJsonObject& params)
         spdlog::debug("TerminalTabPage::doConnect: calling view_->startShell({}, {}), view_={}",
                       shell.toStdString(), args.size(), (void*)view_);
 
+#ifdef Q_OS_WIN
         if (isMsysBash) {
             // MSYS2/Git Bash 需要正确的 TERM 和 MSYSTEM 环境变量才能保持交互
             // 关键: 必须设置 PATH 包含 MSYS2 的 bin 目录, 否则 bash --login
@@ -179,7 +197,7 @@ void TerminalTabPage::doConnect(const QJsonObject& params)
             env["CHERE_INVOKING"] = "1";
             env["MSYS2_PATH_TYPE"] = "inherit";
             // 预设 MSYS2 标准路径 (Windows 格式, 供 bash 启动阶段使用)
-            // bash --login 读取 /etc/profile 后会用 MSYS2 格式路径覆盖
+            // bash -- login 读取 /etc/profile 后会用 MSYS2 格式路径覆盖
             if (!msysRoot.isEmpty()) {
                 QString msysRootWin = QDir::toNativeSeparators(msysRoot);
                 env["PATH"] = msysRootWin + "\\mingw64\\bin;" +
@@ -194,6 +212,9 @@ void TerminalTabPage::doConnect(const QJsonObject& params)
         } else {
             view_->startShell(shell, args);
         }
+#else
+        view_->startShell(shell, args);
+#endif
         view_->setShellName(shell);
         spdlog::info("TerminalTabPage: starting local shell {}", shell.toStdString());
         break;

@@ -11,9 +11,7 @@
         <file alias="ConnectionWizard.qml">qml/ConnectionWizard.qml</file>
         <file alias="SettingsDialog.qml">qml/SettingsDialog.qml</file>
         <file alias="AboutDialog.qml">qml/AboutDialog.qml</file>
-    </qresource>
-    <qresource prefix="/EmberDesign">
-        <file alias="DesignSystem.qml">qml/EmberDesign/DesignSystem.qml</file>
-        <file alias="qmldir">qml/EmberDesign/qmldir</file>
+        <file alias="EmberDesign/qmldir">qml/EmberDesign/qmldir</file>
+        <file alias="EmberDesign/DesignSystem.qml">qml/EmberDesign/DesignSystem.qml</file>
     </qresource>
 </RCC>

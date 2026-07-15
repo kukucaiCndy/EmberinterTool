@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QDir>
 #include <QIcon>
+#include <QStandardPaths>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -54,8 +55,13 @@ int main(int argc, char* argv[])
     }
 
     // 双 sink: stdout (彩色) + 文件
+    // 日志文件写入用户可写目录，避免从 DMG 只读卷运行时崩溃
+    QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    QDir().mkpath(logDir);
+    QString logPath = logDir + "/serial-monitor.log";
+
     auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    auto fileSink    = std::make_shared<spdlog::sinks::basic_file_sink_mt>("serial-monitor.log", true);
+    auto fileSink    = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath.toStdString(), true);
     std::vector<spdlog::sink_ptr> sinks{consoleSink, fileSink};
     auto logger = std::make_shared<spdlog::logger>("app", sinks.begin(), sinks.end());
     spdlog::set_default_logger(logger);
@@ -83,10 +89,12 @@ int main(int argc, char* argv[])
         }
     });
 
+#ifdef Q_OS_WIN
     // 强制使用 OpenGL RHI 后端 (QQuickFramebufferObject + QOpenGLFunctions 需要)
     // Qt6 默认在 Windows 上使用 D3D11, 会导致 OpenGL FBO 渲染静默失败
     // 必须在 QGuiApplication 构造之前设置!
     qputenv("QSG_RHI_BACKEND", "opengl");
+#endif
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("EmberInterDebugTool");
@@ -108,7 +116,6 @@ int main(int argc, char* argv[])
 
     // QML 导入路径: 始终注册 qrc 路径 + 开发模式文件系统路径
     engine.addImportPath("qrc:/qml");
-    engine.addImportPath("qrc:/EmberDesign");
 
     QString qmlMainPath = "qrc:/qml/main.qml";
     bool useQrc = true;
