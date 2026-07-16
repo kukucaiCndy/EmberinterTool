@@ -74,21 +74,20 @@ jobs:
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: true
           install: >-
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-qt6-base
-            mingw-w64-x86_64-qt6-declarative
-            mingw-w64-x86_64-qt6-quickcontrols2
-            mingw-w64-x86_64-qt6-serialport
-            mingw-w64-x86_64-qt6-svg
-            mingw-w64-x86_64-qt6-tools
-            mingw-w64-x86_64-spdlog
-            mingw-w64-x86_64-fmt
-            mingw-w64-x86_64-rapidjson
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-declarative
+            mingw-w64-ucrt-x86_64-qt6-serialport
+            mingw-w64-ucrt-x86_64-qt6-svg
+            mingw-w64-ucrt-x86_64-qt6-tools
+            mingw-w64-ucrt-x86_64-spdlog
+            mingw-w64-ucrt-x86_64-fmt
+            mingw-w64-ucrt-x86_64-rapidjson
 
       - name: Configure
         run: |
@@ -105,12 +104,12 @@ jobs:
           mkdir -p build/deploy
           cp build/bin/serial-monitor.exe build/deploy/
           cp build/bin/serial-monitor-cli.exe build/deploy/
-          /mingw64/bin/windeployqt6.exe build/deploy/serial-monitor.exe \
+          /ucrt64/bin/windeployqt6.exe build/deploy/serial-monitor.exe \
             --qmldir src/gui/qml \
             --release
-          cp /mingw64/bin/libstdc++-6.dll build/deploy/ 2>/dev/null || true
-          cp /mingw64/bin/libgcc_s_seh-1.dll build/deploy/ 2>/dev/null || true
-          cp /mingw64/bin/libwinpthread-1.dll build/deploy/ 2>/dev/null || true
+          cp /ucrt64/bin/libstdc++-6.dll build/deploy/ 2>/dev/null || true
+          cp /ucrt64/bin/libgcc_s_seh-1.dll build/deploy/ 2>/dev/null || true
+          cp /ucrt64/bin/libwinpthread-1.dll build/deploy/ 2>/dev/null || true
 
       - name: Create ZIP
         shell: pwsh
@@ -149,11 +148,14 @@ jobs:
             qt6-base-dev \
             qt6-base-dev-tools \
             qt6-declarative-dev \
-            qt6-quickcontrols2-dev \
             qt6-serialport-dev \
             qt6-svg-dev \
             libqt6opengl6-dev \
-            libqt6serialport6-dev
+            libqt6serialport6-dev \
+            qml6-module-qtquick-controls \
+            qml6-module-qtquick-layouts \
+            qml6-module-qtquick-window \
+            qml6-module-qtquick-templates
 
       - name: Configure
         run: |
