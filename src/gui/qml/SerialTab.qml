@@ -17,12 +17,11 @@ Rectangle {
     property int selStartIdx: -1
     property int selEndIdx: -1
 
-    // 断开状态下，回车键重新连接
-    focus: true
-    Keys.onReturnPressed: {
-        if (root.tabPage && !root.tabPage.connected) {
-            root.tabPage.reconnect()
-        }
+    // 断开状态下，回车键重新连接 (仅当前 Tab 可见时生效)
+    Shortcut {
+        sequences: ["Return", "Enter"]
+        enabled: root.visible && root.tabPage && !root.tabPage.connected
+        onActivated: root.tabPage.reconnect()
     }
 
     // 隐藏的 TextArea 用于复制选中文本到剪贴板
