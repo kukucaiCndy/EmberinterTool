@@ -23,8 +23,8 @@ Popup {
     property bool checking: false
     property string updateStatus: ""
     property string latestVersion: ""
-    property string currentVersion: "v1.4.0"
-    property string buildDate: "2026.07.15"
+    property string currentVersion: "v1.4.1"
+    property string buildDate: "2026.07.16"
     property bool updateAvailable: false
     property bool autoCheckEnabled: true
     property string downloadUrl: ""
