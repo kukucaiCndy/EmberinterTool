@@ -17,7 +17,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install qt@6 spdlog fmt rapidjson create-dmg
+          brew install qt@6 spdlog fmt rapidjson
           brew link --force qt@6
 
       - name: Configure
@@ -35,15 +35,12 @@ jobs:
       - name: Deploy Qt
         run: |
           APP="build/bin/serial-monitor.app"
-          # 清理旧部署产物
           rm -rf "$APP/Contents/Frameworks" \
                  "$APP/Contents/PlugIns" \
                  "$APP/Contents/Resources/qt.conf"
-          # macdeployqt 打包
           "$(brew --prefix qt@6)/bin/macdeployqt" "$APP" \
             -qmldir="$GITHUB_WORKSPACE/src/gui/qml" \
             -libpath="$(brew --prefix qt@6)/lib"
-          # ad-hoc 签名
           codesign --force --deep --sign - "$APP"
 
       - name: Create DMG
@@ -84,10 +81,11 @@ jobs:
             mingw-w64-x86_64-make
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-qt6-base
-            mingw-w64-x86_64-qt6-quick
+            mingw-w64-x86_64-qt6-declarative
             mingw-w64-x86_64-qt6-quickcontrols2
             mingw-w64-x86_64-qt6-serialport
             mingw-w64-x86_64-qt6-svg
+            mingw-w64-x86_64-qt6-tools
             mingw-w64-x86_64-spdlog
             mingw-w64-x86_64-fmt
             mingw-w64-x86_64-rapidjson
@@ -97,8 +95,7 @@ jobs:
           mkdir -p build
           cd build
           cmake .. -G "MinGW Makefiles" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="/mingw64/lib/cmake"
+            -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cd build && mingw32-make -j$(nproc)
@@ -108,14 +105,12 @@ jobs:
           mkdir -p build/deploy
           cp build/bin/serial-monitor.exe build/deploy/
           cp build/bin/serial-monitor-cli.exe build/deploy/
-          # 使用 windeployqt 打包
-          /mingw64/bin/windeployqt-qt6.exe build/deploy/serial-monitor.exe \
+          /mingw64/bin/windeployqt6.exe build/deploy/serial-monitor.exe \
             --qmldir src/gui/qml \
             --release
-          # 复制额外的 dll
-          cp /mingw64/bin/libstdc++-6.dll build/deploy/ || true
-          cp /mingw64/bin/libgcc_s_seh-1.dll build/deploy/ || true
-          cp /mingw64/bin/libwinpthread-1.dll build/deploy/ || true
+          cp /mingw64/bin/libstdc++-6.dll build/deploy/ 2>/dev/null || true
+          cp /mingw64/bin/libgcc_s_seh-1.dll build/deploy/ 2>/dev/null || true
+          cp /mingw64/bin/libwinpthread-1.dll build/deploy/ 2>/dev/null || true
 
       - name: Create ZIP
         shell: pwsh
@@ -129,10 +124,10 @@ jobs:
           path: build/EmberInterDebugTool-Windows.zip
 
   # ═══════════════════════════════════════════════
-  # Linux 构建 (x64, AppImage)
+  # Linux 构建 (x64)
   # ═══════════════════════════════════════════════
   build-linux:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -147,13 +142,10 @@ jobs:
             libspdlog-dev \
             libfmt-dev \
             rapidjson-dev \
-            libgl1-mesa-dev \
             libxkbcommon-dev \
             libwayland-dev \
             libwayland-egl-backend-dev \
-            wayland-protocols
-          # Qt6 via official PPA
-          sudo apt-get install -y \
+            wayland-protocols \
             qt6-base-dev \
             qt6-base-dev-tools \
             qt6-declarative-dev \
@@ -173,61 +165,27 @@ jobs:
       - name: Build
         run: cd build && make -j$(nproc)
 
-      - name: Deploy Qt
+      - name: Create archive
         run: |
           mkdir -p build/deploy/bin
           cp build/bin/serial-monitor build/deploy/bin/
           cp build/bin/serial-monitor-cli build/deploy/bin/
-          # 使用 linuxdeployqt 或手动打包
-          # 创建 AppDir 结构
-          mkdir -p build/AppDir/usr/bin
-          mkdir -p build/AppDir/usr/share/applications
-          mkdir -p build/AppDir/usr/share/icons/hicolor/256x256/apps
-          cp build/bin/serial-monitor build/AppDir/usr/bin/
-          cp build/bin/serial-monitor-cli build/AppDir/usr/bin/
-          cp resources/icons/logo.png build/AppDir/usr/share/icons/hicolor/256x256/apps/serial-monitor.png
-          cat > build/AppDir/usr/share/applications/serial-monitor.desktop <<EOF
-          [Desktop Entry]
-          Name=EmberInterDebugTool
-          Exec=serial-monitor
-          Icon=serial-monitor
-          Type=Application
-          Categories=Development;
-          EOF
           # 收集 Qt 依赖库
           ldd build/bin/serial-monitor | grep "=> /" | awk '{print $3}' | \
             xargs -I{} cp -v {} build/deploy/bin/ 2>/dev/null || true
           # 复制 Qt 插件
           mkdir -p build/deploy/bin/platforms
           mkdir -p build/deploy/bin/imageformats
-          cp /usr/lib/qt6/plugins/platforms/libqxcb.so build/deploy/bin/platforms/ 2>/dev/null || true
-          cp /usr/lib/qt6/plugins/imageformats/*.so build/deploy/bin/imageformats/ 2>/dev/null || true
-
-      - name: Create AppImage
-        run: |
-          # 下载 linuxdeployqt
-          wget -q https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage -O linuxdeployqt
-          chmod +x linuxdeployqt
-          # 构建 AppImage
-          ./linuxdeployqt build/AppDir/usr/share/applications/serial-monitor.desktop \
-            -appimage -qmake=/usr/bin/qmake6 \
-            -extra-plugins=platforms,imageformats
-          # 重命名
-          mv EmberInterDebugTool*.AppImage build/EmberInterDebugTool-Linux.AppImage || true
-
-          # 如果 AppImage 失败，打包 zip 作为后备
-          if [ ! -f build/EmberInterDebugTool-Linux.AppImage ]; then
-            cd build
-            zip -r EmberInterDebugTool-Linux.zip deploy/
-          fi
+          cp /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/libqxcb.so build/deploy/bin/platforms/ 2>/dev/null || true
+          cp /usr/lib/x86_64-linux-gnu/qt6/plugins/imageformats/*.so build/deploy/bin/imageformats/ 2>/dev/null || true
+          cd build
+          zip -r EmberInterDebugTool-Linux.zip deploy/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Linux-package
-          path: |
-            build/EmberInterDebugTool-Linux.AppImage
-            build/EmberInterDebugTool-Linux.zip
+          name: Linux-zip
+          path: build/EmberInterDebugTool-Linux.zip
 
   # ═══════════════════════════════════════════════
   # 发布 Release
@@ -235,11 +193,10 @@ jobs:
   release:
     needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -248,14 +205,13 @@ jobs:
       - name: Display structure
         run: ls -lhR artifacts
 
-      - name: Create or Update Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/macOS-dmg/EmberInterDebugTool-macOS.dmg
             artifacts/Windows-zip/EmberInterDebugTool-Windows.zip
-            artifacts/Linux-package/EmberInterDebugTool-Linux.AppImage
-            artifacts/Linux-package/EmberInterDebugTool-Linux.zip
+            artifacts/Linux-zip/EmberInterDebugTool-Linux.zip
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref, '-test') || contains(github.ref, '-rc') }}
