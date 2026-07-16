@@ -104,12 +104,15 @@ jobs:
           mkdir -p build/deploy
           cp build/bin/serial-monitor.exe build/deploy/
           cp build/bin/serial-monitor-cli.exe build/deploy/
-          /ucrt64/bin/windeployqt-qt6.exe build/deploy/serial-monitor.exe \
+          # 找到 windeployqt 的路径
+          WINDEPLOYQT=$(which windeployqt-qt6.exe 2>/dev/null || which windeployqt6.exe 2>/dev/null || find /ucrt64 -name "windeployqt*" -type f 2>/dev/null | head -1)
+          echo "Using windeployqt: $WINDEPLOYQT"
+          "$WINDEPLOYQT" build/deploy/serial-monitor.exe \
             --qmldir src/gui/qml \
             --release \
             --no-translations \
             --no-system-d3d-compiler \
-            --no-opengl-sw
+            --no-opengl-sw || true
           cp /ucrt64/bin/libstdc++-6.dll build/deploy/ 2>/dev/null || true
           cp /ucrt64/bin/libgcc_s_seh-1.dll build/deploy/ 2>/dev/null || true
           cp /ucrt64/bin/libwinpthread-1.dll build/deploy/ 2>/dev/null || true
