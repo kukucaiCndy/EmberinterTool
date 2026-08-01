@@ -619,13 +619,21 @@ void AppCore::checkUpdate()
         QString releaseName = release["name"].toString();
         QString body = release["body"].toString();
 
-        // 提取下载链接 (第一个 exe 资产)
+        // 提取下载链接: 按当前平台选择对应的 Release 资产
+        // (v1.4.2 起三平台产物: macOS.dmg / Windows.zip / Linux.zip, 无通用 .exe)
         QString downloadUrl;
         QJsonArray assets = release["assets"].toArray();
+#ifdef Q_OS_WIN
+        const QString assetSuffix = "Windows.zip";
+#elif defined(Q_OS_MACOS)
+        const QString assetSuffix = "macOS.dmg";
+#else
+        const QString assetSuffix = "Linux.zip";
+#endif
         for (const auto& a : assets) {
             QJsonObject asset = a.toObject();
             QString name = asset["name"].toString();
-            if (name.endsWith(".exe", Qt::CaseInsensitive)) {
+            if (name.endsWith(assetSuffix, Qt::CaseInsensitive)) {
                 downloadUrl = asset["browser_download_url"].toString();
                 break;
             }
@@ -672,12 +680,11 @@ void AppCore::downloadUpdate(const QString& url)
         downloadReply_ = nullptr;
     }
 
-    // 下载到临时目录
+    // 下载到临时目录, 保留资产原名 (EmberInterDebugTool-macOS.dmg 等)
     QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-    // 从 URL 提取文件名
     QString fileName = url.section('/', -1);
-    if (fileName.isEmpty() || !fileName.endsWith(".exe", Qt::CaseInsensitive)) {
-        fileName = "emberInter-Setup.exe";
+    if (fileName.isEmpty()) {
+        fileName = "EmberInterDebugTool-Update.pkg";
     }
     downloadFilePath_ = tempDir + "/" + fileName;
 

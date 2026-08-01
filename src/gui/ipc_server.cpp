@@ -167,7 +167,7 @@ void IPCServer::onNewConnection()
         emit clientConnected(clientId);
 
         QJsonObject welcomePayload;
-        welcomePayload["server_version"] = "1.4.2";
+        welcomePayload["server_version"] = "1.4.3";
         QByteArray welcome = IpcProtocol::buildMessage("welcome", welcomePayload);
         sendToClient(client, welcome);
     }

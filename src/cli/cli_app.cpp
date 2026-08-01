@@ -68,7 +68,7 @@ int CLIApp::run(int argc, char* argv[])
     QCoreApplication app(argc, argv);
     app_ = &app;
     app.setApplicationName("EmberInterDebugTool-cli");
-    app.setApplicationVersion("1.4.2");
+    app.setApplicationVersion("1.4.3");
 
     QCommandLineParser parser;
     parser.setApplicationDescription("EmberInterDebugTool - 尘智串口调试工具 CLI");
@@ -434,7 +434,7 @@ int CLIApp::startInteractive(const QString& port)
 
     QTextStream out(stdout);
     out << COLOR_CYAN << QString(60, '=') << COLOR_RESET << Qt::endl;
-    out << COLOR_CYAN << "  EmberInterDebugTool v1.4.2 - 尘智 | 微尘藏星火,终端蕴尘智" << COLOR_RESET << Qt::endl;
+    out << COLOR_CYAN << "  EmberInterDebugTool v1.4.3 - 尘智 | 微尘藏星火,终端蕴尘智" << COLOR_RESET << Qt::endl;
     out << COLOR_GRAY << "  Port: " << port << COLOR_RESET << Qt::endl;
     out << COLOR_CYAN << QString(60, '=') << COLOR_RESET << Qt::endl;
     out << Qt::endl;
@@ -1050,7 +1050,7 @@ void CLIApp::printHelp() const
 {
     QTextStream out(stdout);
     out << Qt::endl;
-    out << "EmberInterDebugTool CLI v1.4.2" << Qt::endl;
+    out << "EmberInterDebugTool CLI v1.4.3" << Qt::endl;
     out << Qt::endl;
     out << "会话管理:" << Qt::endl;
     out << "  connect <port> [baud] - 连接串口" << Qt::endl;
@@ -1091,7 +1091,7 @@ void CLIApp::printHelp() const
 void CLIApp::printUsage() const
 {
     QTextStream out(stdout);
-    out << "EmberInterDebugTool v1.4.2 - 尘智 | 微尘藏星火,终端蕴尘智" << Qt::endl << Qt::endl;
+    out << "EmberInterDebugTool v1.4.3 - 尘智 | 微尘藏星火,终端蕴尘智" << Qt::endl << Qt::endl;
     out << "用法: EmberInterDebugTool-cli [选项]" << Qt::endl << Qt::endl;
     out << "监听模式 (需先启动GUI):" << Qt::endl;
     out << "  -p, --port PORT       指定串口, 实时接收日志 (需先通过GUI连接该串口)" << Qt::endl;
