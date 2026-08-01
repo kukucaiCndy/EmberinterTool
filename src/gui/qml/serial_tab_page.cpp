@@ -34,6 +34,25 @@ QVariant LogListModel::data(const QModelIndex& index, int role) const
         if (hexMode_)
             return LogParser::formatHex(e.rawBytes);
         return LogParser::formatDisplay(e, showTimestamp_);
+    case HtmlDisplayRole: {
+        if (hexMode_)
+            return LogParser::formatHex(e.rawBytes);
+        // 构建带 ANSI 颜色的 HTML 显示文本
+        QString display = LogParser::formatDisplay(e, showTimestamp_);
+        // 如果原始数据包含 ANSI 码, 转为 HTML 颜色
+        if (e.rawBytes.contains('\033')) {
+            // 用原始行 (含 ANSI) 构建 HTML, 加上时间戳前缀
+            QString rawLine = QString::fromUtf8(e.rawBytes).trimmed();
+            QString htmlBody = LogParser::ansiToHtml(rawLine);
+            if (showTimestamp_) {
+                return QString("<span style=\"color:#8B949E\">[%1]</span> %2")
+                    .arg(e.timestamp, htmlBody);
+            }
+            return htmlBody;
+        }
+        // 无 ANSI 码: 用纯文本
+        return display;
+    }
     case TimestampRole: return e.timestamp;
     case LevelRole:     return e.level;
     case ColorRole:     return LogParser::levelColorHex(e.level);
@@ -49,7 +68,8 @@ QHash<int, QByteArray> LogListModel::roleNames() const
         {TimestampRole, "timestamp"},
         {LevelRole,     "level"},
         {ColorRole,     "color"},
-        {RawHexRole,    "rawHex"}
+        {RawHexRole,    "rawHex"},
+        {HtmlDisplayRole, "htmlDisplay"}
     };
 }
 
@@ -284,9 +304,9 @@ void SerialTabPage::setHexMode(bool enabled)
     hexMode_ = enabled;
     logModel_.setHexMode(enabled);
     emit hexModeChanged();
-    // 触发 dataChanged 让 ListView 重新请求 DisplayRole
+    // 触发 dataChanged 让 ListView 重新请求 DisplayRole + HtmlDisplayRole
     if (logModel_.rowCount() > 0)
-        emit logModel_.dataChanged(logModel_.index(0), logModel_.index(logModel_.rowCount() - 1), {LogListModel::DisplayRole});
+        emit logModel_.dataChanged(logModel_.index(0), logModel_.index(logModel_.rowCount() - 1), {LogListModel::DisplayRole, LogListModel::HtmlDisplayRole});
 }
 
 void SerialTabPage::setPaused(bool p)
@@ -311,7 +331,7 @@ void SerialTabPage::setShowTimestamp(bool show)
     logModel_.setShowTimestamp(show);
     emit showTimestampChanged();
     if (logModel_.rowCount() > 0)
-        emit logModel_.dataChanged(logModel_.index(0), logModel_.index(logModel_.rowCount() - 1), {LogListModel::DisplayRole});
+        emit logModel_.dataChanged(logModel_.index(0), logModel_.index(logModel_.rowCount() - 1), {LogListModel::DisplayRole, LogListModel::HtmlDisplayRole});
 }
 
 void SerialTabPage::setAutoScroll(bool enabled)

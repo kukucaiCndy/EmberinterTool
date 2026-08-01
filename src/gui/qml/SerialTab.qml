@@ -216,12 +216,13 @@ Rectangle {
                 Text {
                     anchors.fill: parent
                     anchors.leftMargin: 8; anchors.rightMargin: 6
-                    text: model.display
+                    text: model.htmlDisplay || model.display
                     color: model.color
                     font.family: DesignSystem.fontMono; font.pixelSize: DesignSystem.fontSizeMd
                     elide: Text.ElideNone
                     verticalAlignment: Text.AlignVCenter
                     renderType: Text.NativeRendering
+                    textFormat: Text.RichText
                 }
             }
 

@@ -3,12 +3,110 @@
 #include <QStringList>
 #include <QRegularExpression>
 
-// 剥离 ANSI 转义序列 (如 \033[0m, \033[31m 等)
-static QString stripAnsiCodes(const QString& text)
+// ANSI 颜色码 → 颜色映射表 (适合深色背景)
+static const QHash<int, QString> ansiColorMap = {
+    {0,  "#E6EDF3"}, // 重置/默认 (textPrimary)
+    {30, "#6E7681"}, // 黑色 → 深灰
+    {31, "#F85149"}, // 红色
+    {32, "#7EE787"}, // 绿色
+    {33, "#D29922"}, // 黄色
+    {34, "#79C0FF"}, // 蓝色
+    {35, "#D2A8FF"}, // 品红
+    {36, "#56D4DD"}, // 青色
+    {37, "#E6EDF3"}, // 白色
+    {90, "#8B949E"}, // 亮黑 → 灰
+    {91, "#FF7B72"}, // 亮红
+    {92, "#56D364"}, // 亮绿
+    {93, "#E3B341"}, // 亮黄
+    {94, "#79C0FF"}, // 亮蓝
+    {95, "#D2A8FF"}, // 亮品红
+    {96, "#56D4DD"}, // 亮青
+    {97, "#F0F6FC"}, // 亮白
+};
+
+QString LogParser::stripAnsi(const QString& text)
 {
     static const QRegularExpression ansiRe("\033\\[[0-9;]*m");
     QString result = text;
     result.remove(ansiRe);
+    return result;
+}
+
+QString LogParser::ansiToHtml(const QString& text)
+{
+    // HTML 转义
+    QString escaped;
+    escaped.reserve(text.size() * 2);
+    for (const QChar& ch : text) {
+        if (ch == '<') escaped += "&lt;";
+        else if (ch == '>') escaped += "&gt;";
+        else if (ch == '&') escaped += "&amp;";
+        else escaped += ch;
+    }
+
+    // 解析 ANSI 转义序列，转为 <span style="color:..."> 标签
+    static const QRegularExpression ansiRe("\033\\[([0-9;]*)m");
+    QRegularExpressionMatchIterator it = ansiRe.globalMatch(escaped);
+    
+    QString result;
+    int lastEnd = 0;
+    QStringList openSpans; // 栈追踪已打开的 span
+    
+    while (it.hasNext()) {
+        QRegularExpressionMatch match = it.next();
+        // 添加转义码之前的文本
+        result += escaped.mid(lastEnd, match.capturedStart() - lastEnd);
+        lastEnd = match.capturedEnd();
+        
+        QString codes = match.captured(1);
+        if (codes.isEmpty()) {
+            // \033[0m 重置
+            for (int i = openSpans.size() - 1; i >= 0; --i) {
+                result += "</span>";
+            }
+            openSpans.clear();
+        } else {
+            QStringList parts = codes.split(';', Qt::SkipEmptyParts);
+            for (const QString& part : parts) {
+                bool ok;
+                int code = part.toInt(&ok);
+                if (!ok) continue;
+                
+                if (code == 0) {
+                    // 重置
+                    for (int i = openSpans.size() - 1; i >= 0; --i) {
+                        result += "</span>";
+                    }
+                    openSpans.clear();
+                } else if (code == 1) {
+                    // 粗体: 用亮色
+                    if (!openSpans.isEmpty()) {
+                        result += "</span>";
+                        openSpans.removeLast();
+                    }
+                    result += "<span style=\"font-weight:bold;color:#F0F6FC\">";
+                    openSpans.append("bold");
+                } else if (ansiColorMap.contains(code)) {
+                    // 颜色码: 关闭上一个 span 再开新的
+                    if (!openSpans.isEmpty()) {
+                        result += "</span>";
+                        openSpans.removeLast();
+                    }
+                    result += QString("<span style=\"color:%1\">").arg(ansiColorMap.value(code));
+                    openSpans.append("color");
+                }
+            }
+        }
+    }
+    
+    // 添加剩余文本
+    result += escaped.mid(lastEnd);
+    
+    // 关闭所有未关闭的 span
+    for (int i = 0; i < openSpans.size(); ++i) {
+        result += "</span>";
+    }
+    
     return result;
 }
 
@@ -91,8 +189,8 @@ QString LogParser::detectLevel(const QString& line)
 
 LogEntry LogParser::parseLine(const QByteArray& rawData, const QString& portName)
 {
-    // 先剥离 ANSI 转义码，再做后续处理
-    QString line = stripAnsiCodes(QString::fromUtf8(rawData)).trimmed();
+    // 剥离 ANSI 转义码得到纯文本 (用于级别检测、复制、导出)
+    QString line = stripAnsi(QString::fromUtf8(rawData)).trimmed();
     QString ts = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
     QString level = detectLevel(line);
     return LogEntry(ts, level, line, rawData, portName);

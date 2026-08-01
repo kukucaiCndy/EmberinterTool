@@ -19,7 +19,8 @@ public:
         TimestampRole,
         LevelRole,
         ColorRole,
-        RawHexRole
+        RawHexRole,
+        HtmlDisplayRole
     };
 
     explicit LogListModel(QObject* parent = nullptr);
