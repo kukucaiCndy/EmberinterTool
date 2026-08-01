@@ -89,16 +89,16 @@ int main(int argc, char* argv[])
         }
     });
 
-#ifdef Q_OS_WIN
     // 强制使用 OpenGL RHI 后端 (QQuickFramebufferObject + QOpenGLFunctions 需要)
-    // Qt6 默认在 Windows 上使用 D3D11, 会导致 OpenGL FBO 渲染静默失败
+    // Qt6 默认 Windows 用 D3D11 / macOS 用 Metal, 会导致 OpenGL FBO 渲染静默失败
+    // (终端视图黑屏/空白, 但鼠标键盘事件正常)
     // 必须在 QGuiApplication 构造之前设置!
-    qputenv("QSG_RHI_BACKEND", "opengl");
-#endif
+    if (qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND"))
+        qputenv("QSG_RHI_BACKEND", "opengl");
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("EmberInterDebugTool");
-    app.setApplicationVersion("1.4.1");
+    app.setApplicationVersion("1.4.2");
     app.setOrganizationName("EmberInter");
     app.setWindowIcon(QIcon(":/icons/app.ico"));
 

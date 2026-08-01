@@ -254,6 +254,8 @@ private:
     void refreshSavedPortConnected();
     bool isPortUsed(const QString& port) const;
     QString formatUptime(qint64 seconds) const;
+    /// 保存会话到 "我的会话" (同类型同端口已存在时不重复添加)
+    void saveSessionPort(const SavedPort& sp);
 
     IPCServer* ipcServer_;
     TabModel tabModel_;

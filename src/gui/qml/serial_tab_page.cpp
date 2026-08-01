@@ -29,6 +29,11 @@ QVariant LogListModel::data(const QModelIndex& index, int role) const
         return {};
 
     const auto& e = entries_[index.row()];
+    // Zephyr 格式日志 (<inf>/<wrn>/<err>/...): 使用 Zephyr 规范级别色
+    const bool isZephyr = LogParser::isZephyrLine(e.text);
+    auto levelColor = [&](const QString& lvl) {
+        return isZephyr ? LogParser::zephyrColorHex(lvl) : LogParser::levelColorHex(lvl);
+    };
     switch (role) {
     case DisplayRole:
         if (hexMode_)
@@ -37,25 +42,37 @@ QVariant LogListModel::data(const QModelIndex& index, int role) const
     case HtmlDisplayRole: {
         if (hexMode_)
             return LogParser::formatHex(e.rawBytes);
-        // 构建带 ANSI 颜色的 HTML 显示文本
-        QString display = LogParser::formatDisplay(e, showTimestamp_);
         // 如果原始数据包含 ANSI 码, 转为 HTML 颜色
         if (e.rawBytes.contains('\033')) {
-            // 用原始行 (含 ANSI) 构建 HTML, 加上时间戳前缀
             QString rawLine = QString::fromUtf8(e.rawBytes).trimmed();
             QString htmlBody = LogParser::ansiToHtml(rawLine);
+            // ANSI 码可能只是 \033[0m (重置), 无实际颜色
+            // 如果转换后没有 <span> 标签, 根据日志级别主动着色
+            if (!htmlBody.contains("<span")) {
+                QString color = levelColor(e.level);
+                htmlBody = QString("<span style=\"color:%1\">%2</span>").arg(color, htmlBody);
+            }
             if (showTimestamp_) {
                 return QString("<span style=\"color:#8B949E\">[%1]</span> %2")
                     .arg(e.timestamp, htmlBody);
             }
             return htmlBody;
         }
-        // 无 ANSI 码: 用纯文本
+        // 无 ANSI 码: 根据日志级别着色
+        QString display = LogParser::formatDisplay(e, showTimestamp_);
+        if (!e.level.isEmpty()) {
+            QString color = levelColor(e.level);
+            if (showTimestamp_) {
+                return QString("<span style=\"color:#8B949E\">[%1]</span> <span style=\"color:%2\">%3</span>")
+                    .arg(e.timestamp, color, e.text);
+            }
+            return QString("<span style=\"color:%1\">%2</span>").arg(color, e.text);
+        }
         return display;
     }
     case TimestampRole: return e.timestamp;
     case LevelRole:     return e.level;
-    case ColorRole:     return LogParser::levelColorHex(e.level);
+    case ColorRole:     return levelColor(e.level);
     case RawHexRole:    return QString::fromUtf8(e.rawBytes.toHex(' ').toUpper());
     }
     return {};
@@ -475,6 +492,7 @@ QJsonArray SerialTabPage::getRecentLogs(int count) const
         obj["timestamp"] = e.timestamp;
         obj["level"] = e.level;
         obj["text"] = e.text;
+        obj["raw_hex"] = QString::fromLatin1(e.rawBytes.toHex(' ').toUpper());
         obj["port"] = e.portName;
         arr.append(obj);
     }

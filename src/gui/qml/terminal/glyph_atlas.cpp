@@ -1,6 +1,7 @@
 #include "glyph_atlas.h"
 #include <QPainter>
 #include <QFontDatabase>
+#include <QFontInfo>
 #include <algorithm>
 #include <cstring>
 
@@ -72,6 +73,18 @@ void GlyphAtlas::setupFont(const QFont& font, int cellWidth, int cellHeight)
     font_.setStyleStrategy(QFont::PreferAntialias);
     // 动态构建字体回退链：主字体 + 系统可用 CJK 字体 + 通用字体
     font_.setFamilies(buildFontFallbacks(font.family()));
+
+    // Retina (dpr>1) 下字形需按物理分辨率栅格化:
+    // cellWidth/cellHeight 是物理像素, 而传入的 font 为逻辑大小,
+    // 直接绘制会导致字形偏小、字符间距过大 ("小字 + 稀疏" 问题)。
+    // 按 物理单元格高度/逻辑行高 等比放大字体像素大小。
+    QFontMetricsF fm(font_);
+    qreal logicalHeight = fm.ascent() + fm.descent();
+    int basePx = QFontInfo(font_).pixelSize();
+    if (basePx > 0 && logicalHeight > 0.0 && cellHeight > 0) {
+        int px = qRound(basePx * cellHeight / logicalHeight);
+        font_.setPixelSize(std::max(1, px));
+    }
 
     boldFont_ = font_;
     boldFont_.setBold(true);

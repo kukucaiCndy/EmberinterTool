@@ -26,6 +26,12 @@ public:
 
     static QString levelColorHex(const QString& level);
 
+    /// 判断日志行是否为 Zephyr 格式 (含 <inf>/<wrn>/<err>/<dbg>/<trc> 级别标签)
+    static bool isZephyrLine(const QString& text);
+
+    /// Zephyr 级别规范色 (inf=绿, wrn=黄, err=红, dbg=青, trc=灰)
+    static QString zephyrColorHex(const QString& level);
+
 private:
     LogParser() = default;
 };

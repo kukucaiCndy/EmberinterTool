@@ -144,6 +144,17 @@ bool PtyProcessUnix::start(const QString& program, const QStringList& args,
             }
         }
 
+        // 确保子进程获得可用的 TERM (PTY 本身支持颜色):
+        // GUI 应用从 Finder/launchd 启动时 TERM 常为 "dumb" 或为空,
+        // 会导致 shell 及工具 (git/ls/grep) 不输出 ANSI 颜色码。
+        // 在调用方 env 之后检查, 调用方显式设置的 TERM 优先。
+        const char* curTerm = getenv("TERM");
+        QByteArray termVal = curTerm ? QByteArray(curTerm) : QByteArray();
+        if (termVal.isEmpty() || termVal == "dumb") {
+            char* t = strdup("TERM=xterm-256color");
+            putenv(t);
+        }
+
         // 构建 argv
         QByteArray progBytes = program.toLocal8Bit();
         std::vector<char*> argv;

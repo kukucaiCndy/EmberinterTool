@@ -98,6 +98,22 @@ void AppCore::refreshSavedPortConnected()
     savedPortModel_.refreshConnected(conn);
 }
 
+void AppCore::saveSessionPort(const SavedPort& sp)
+{
+    auto& config = ConfigManager::instance().config();
+    for (const auto& existing : config.savedPorts) {
+        bool same = existing.type == sp.type && existing.port == sp.port;
+        if (sp.type == TabType::SSH) {
+            same = same && existing.extra["user"].toString() == sp.extra["user"].toString();
+        }
+        if (same) return;  // 同类型同端口已存在, 不重复添加
+    }
+    config.savedPorts.append(sp);
+    ConfigManager::instance().save();
+    savedPortModel_.load();
+    refreshSavedPortConnected();
+}
+
 // ── Tab 管理 ─────────────────────────────────────────────
 
 void AppCore::addTab(TabPage* page)
@@ -951,6 +967,14 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
             tabConnParams_[tp] = connParams;
             tabConnectTimes_[tp] = QDateTime::currentDateTime();
 
+            // 写入已保存会话列表 ("我的会话")
+            SavedPort sp;
+            sp.type = TabType::CMD;
+            sp.port = shell;
+            sp.extra["shell"] = shell;
+            sp.name.clear();  // summary 显示为 shell 名
+            saveSessionPort(sp);
+
             data["message"] = QString("Terminal tab created: %1").arg(shell);
             data["tab_index"] = tabModel_.count() - 1;
             data["tab_type"] = tabTypeToString(TabType::CMD);
@@ -977,6 +1001,17 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
             tp->connectTo(connParams);
             tabConnParams_[tp] = connParams;
             tabConnectTimes_[tp] = QDateTime::currentDateTime();
+
+            // 写入已保存会话列表 ("我的会话")
+            SavedPort sp;
+            sp.type = TabType::SSH;
+            sp.extra["host"] = host;
+            sp.extra["port"] = port;
+            sp.extra["user"] = user;
+            sp.extra["password"] = connParams["password"].toString();
+            sp.port = QString::number(port);
+            sp.name.clear();
+            saveSessionPort(sp);
 
             data["message"] = QString("SSH tab created: %1@%2:%3").arg(user, host).arg(port);
             data["tab_index"] = tabModel_.count() - 1;
@@ -1066,7 +1101,7 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
     }
 
     // ── 需要活动串口 Tab 的命令 ──
-    // connect 命令单独处理: 无活动串口 Tab 时自动创建
+    // connect 命令单独处理: 始终新建一个串口 Tab (CLI 会话不应覆盖 GUI 现有会话)
     if (cmd == "connect") {
         QString port = params["port"].toString();
         int baud = params["baudrate"].toInt(115200);
@@ -1077,18 +1112,26 @@ void AppCore::onIpcCommand(const QString& clientId, const QString& cmd,
         c["parity"] = params.value("parity").toInt(0);
         c["stop_bits"] = params.value("stop_bits").toInt(1);
 
-        auto* sp = qobject_cast<SerialTabPage*>(page);
-        if (!sp) {
-            // 无活动串口 Tab, 自动创建
-            sp = new SerialTabPage(this);
-            sp->setPortName(port);
-            addTab(sp);
-            usedPorts_.insert(port);
-            refreshSerialPorts();
-            tabConnParams_[sp] = c;
-            tabConnectTimes_[sp] = QDateTime::currentDateTime();
-        }
+        auto* sp = new SerialTabPage(this);
+        sp->setPortName(port);
+        addTab(sp);
+        usedPorts_.insert(port);
+        refreshSerialPorts();
+        tabConnParams_[sp] = c;
+        tabConnectTimes_[sp] = QDateTime::currentDateTime();
         sp->connectTo(c);
+
+        // 写入已保存会话列表 ("我的会话"), 与 GUI 向导行为一致
+        SavedPort spEntry;
+        spEntry.type = TabType::Serial;
+        spEntry.port = port;
+        spEntry.baudrate = baud;
+        spEntry.databits = static_cast<QSerialPort::DataBits>(c["data_bits"].toInt(8));
+        spEntry.parity = static_cast<QSerialPort::Parity>(c["parity"].toInt(0));
+        spEntry.stopbits = static_cast<QSerialPort::StopBits>(c["stop_bits"].toInt(1));
+        spEntry.name.clear();  // summary 显示为端口名
+        saveSessionPort(spEntry);
+
         data["message"] = "Connecting...";
         data["tab_index"] = currentTabIdx_;
         ipcServer_->sendResponse(clientId, reqId, true, data);
