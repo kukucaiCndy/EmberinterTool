@@ -1,6 +1,16 @@
 #include "log_parser.h"
 #include <QDateTime>
 #include <QStringList>
+#include <QRegularExpression>
+
+// 剥离 ANSI 转义序列 (如 \033[0m, \033[31m 等)
+static QString stripAnsiCodes(const QString& text)
+{
+    static const QRegularExpression ansiRe("\033\\[[0-9;]*m");
+    QString result = text;
+    result.remove(ansiRe);
+    return result;
+}
 
 QStringList LogParser::extractLines(const QByteArray& data, QByteArray& remainder)
 {
@@ -42,25 +52,34 @@ QString LogParser::detectLevel(const QString& line)
         return upper.contains("[" + prefix + "]");
     };
 
+    // 3. 检测 Zephyr RTOS 日志格式: <inf>, <wrn>, <err>, <dbg> (不区分大小写)
+    auto containsAngleLevel = [&upper](const QString& prefix) {
+        return upper.contains("<" + prefix + ">");
+    };
+
     // ERROR (优先级最高)
     if (startsWithLevel("ERROR") || startsWithLevel("ERR") ||
         containsBracketLevel("ERROR") || containsBracketLevel("ERR") ||
+        containsAngleLevel("ERR") ||
         upper.contains("FAIL:") || upper.contains("[FAIL]")) {
         return "ERROR";
     }
     // WARN (支持 WARNG 变体)
     if (startsWithLevel("WARN") || startsWithLevel("WARNING") || startsWithLevel("WARNG") ||
         containsBracketLevel("WARN") || containsBracketLevel("WARNING") ||
-        containsBracketLevel("WARNG")) {
+        containsBracketLevel("WARNG") ||
+        containsAngleLevel("WRN")) {
         return "WARN";
     }
     // INFO
-    if (startsWithLevel("INFO") || containsBracketLevel("INFO")) {
+    if (startsWithLevel("INFO") || containsBracketLevel("INFO") ||
+        containsAngleLevel("INF")) {
         return "INFO";
     }
     // DEBUG
     if (startsWithLevel("DEBUG") || startsWithLevel("DBG") ||
-        containsBracketLevel("DEBUG") || containsBracketLevel("DBG")) {
+        containsBracketLevel("DEBUG") || containsBracketLevel("DBG") ||
+        containsAngleLevel("DBG")) {
         return "DEBUG";
     }
     // TRACE
@@ -72,7 +91,8 @@ QString LogParser::detectLevel(const QString& line)
 
 LogEntry LogParser::parseLine(const QByteArray& rawData, const QString& portName)
 {
-    QString line = QString::fromUtf8(rawData).trimmed();
+    // 先剥离 ANSI 转义码，再做后续处理
+    QString line = stripAnsiCodes(QString::fromUtf8(rawData)).trimmed();
     QString ts = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
     QString level = detectLevel(line);
     return LogEntry(ts, level, line, rawData, portName);
